@@ -1,10 +1,15 @@
 import base64
 import streamlit as st
+import streamlit_shadcn_ui as ui
 from datetime import datetime
 from scrape import scrape_multiple
 from search import get_search_results, is_tor_running
 from llm_utils import BufferedStreamingHandler
 from llm import get_llm, refine_query, filter_results, generate_summary
+
+# Apply dark theme
+st.set_page_config(layout="wide", initial_sidebar_state="expanded", page_title="Robin: AI-Powered Dark Web OSINT Tool", page_icon="🕵️‍♂️")
+
 
 
 # Cache expensive backend calls
@@ -17,72 +22,28 @@ def cached_search_results(refined_query: str, threads: int):
 def cached_scrape_multiple(filtered: list, threads: int):
     return scrape_multiple(filtered, max_workers=threads)
 
-
-# Streamlit page configuration
-st.set_page_config(
-    page_title="Robin: AI-Powered Dark Web OSINT Tool",
-    page_icon="🕵️‍♂️",
-    initial_sidebar_state="expanded",
-)
-
-# Custom CSS for styling (glassmorphism-inspired)
-st.markdown(
-    """
-    <style>
-            .colHeight {
-                max-height: 40vh;
-                overflow-y: auto;
-                text-align: center;
-            }
-            .pTitle {
-                font-weight: bold;
-                color: #FF4B4B;
-                margin-bottom: 0.5em;
-            }
-            .aStyle {
-                font-size: 18px;
-                font-weight: bold;
-                padding: 5px;
-                padding-left: 0px;
-                text-align: center;
-            }
-            .glass {
-                background: rgba(255, 255, 255, 0.05);
-                border-radius: 12px;
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-                backdrop-filter: blur(8px);
-                -webkit-backdrop-filter: blur(8px);
-                padding: 10px 12px;
-                margin-bottom: 10px;
-            }
-    </style>""",
-    unsafe_allow_html=True,
-)
-
-
 # Sidebar
-st.sidebar.title("Robin")
-st.sidebar.text("AI-Powered Dark Web OSINT Tool")
-st.sidebar.markdown(
-    """Made by [Apurv Singh Gautam](https://www.linkedin.com/in/apurvsinghgautam/)"""
-)
-st.sidebar.subheader("Settings")
-from llm import missing_model_env
+with st.sidebar:
+    st.title("Robin")
+    st.text("AI-Powered Dark Web OSINT Tool")
+    st.markdown(
+        """Made by [Apurv Singh Gautam](https://www.linkedin.com/in/apurvsinghgautam/)"""
+    )
+    st.subheader("Settings")
+    from llm import missing_model_env
 
-model = st.sidebar.selectbox(
-    "Select LLM Model",
-    ["gpt4o", "gpt-4.1", "claude-3-5-sonnet-latest", "llama3.1", "gemini-2.5-flash"],
-    key="model_select",
-)
-missing = missing_model_env(model)
-if missing:
-    st.sidebar.warning(f"Missing: {', '.join(missing)}")
-else:
-    st.sidebar.info("Model ready")
+    model = ui.select(
+        options=["gpt4o", "gpt-4.1", "claude-3-5-sonnet-latest", "llama3.1", "gemini-2.5-flash", "gemini-2.5-flash-preview-09-2025", "gemini-2.5-flash-lite"],
+        default="gpt4o",
+        label="Select LLM Model",
+    )
+    missing = missing_model_env(model)
+    if missing:
+        st.warning(f"Missing: {', '.join(missing)}")
+    else:
+        st.info("Model ready")
 
-threads = st.sidebar.slider("Scraping Threads", 1, 16, 4, key="thread_slider")
-
+    threads = ui.slider(default=[4], min_value=1, max_value=16, step=1, label="Scraping Threads")
 
 # Main UI - logo and input
 _, logo_col, _ = st.columns(3)
@@ -90,15 +51,8 @@ with logo_col:
     st.image(".github/assets/robin_logo.png", width=200)
 
 # Display text box and button
-with st.form("search_form", clear_on_submit=True):
-    col_input, col_button = st.columns([10, 1])
-    query = col_input.text_input(
-        "Enter Dark Web Search Query",
-        placeholder="Enter Dark Web Search Query",
-        label_visibility="collapsed",
-        key="query_input",
-    )
-    run_button = col_button.form_submit_button("Run")
+query = ui.text_input(placeholder="Enter Dark Web Search Query", label="Enter Dark Web Search Query")
+run_button = ui.button("Run", key="run_button")
 
 # Display a status message
 status_slot = st.empty()
@@ -132,10 +86,8 @@ if run_button and query:
     with status_slot.container():
         with st.spinner("🔄 Refining query..."):
             st.session_state.refined = refine_query(llm, query)
-    p1.container(border=True).markdown(
-        f"<div class='glass colHeight'><p class='pTitle'>Refined Query</p><p>{st.session_state.refined}</p></div>",
-        unsafe_allow_html=True,
-    )
+    with p1:
+        ui.card(title="Refined Query", content=st.session_state.refined)
     stage_progress.progress(20, text="Query refined")
 
     # Stage 3 - Search dark web
@@ -144,10 +96,8 @@ if run_button and query:
             st.session_state.results = cached_search_results(
                 st.session_state.refined, threads
             )
-    p2.container(border=True).markdown(
-        f"<div class='glass colHeight'><p class='pTitle'>Search Results</p><p>{len(st.session_state.results)}</p></div>",
-        unsafe_allow_html=True,
-    )
+    with p2:
+        ui.card(title="Search Results", content=f"{len(st.session_state.results)} results found")
     stage_progress.progress(40, text="Search completed")
 
     # Stage 4 - Filter results
@@ -156,19 +106,20 @@ if run_button and query:
             st.session_state.filtered = filter_results(
                 llm, st.session_state.refined, st.session_state.results
             )
-    p3.container(border=True).markdown(
-        f"<div class='glass colHeight'><p class='pTitle'>Filtered Results</p><p>{len(st.session_state.filtered)}</p></div>",
-        unsafe_allow_html=True,
-    )
+    with p3:
+        ui.card(title="Filtered Results", content=f"{len(st.session_state.filtered)} results filtered")
     stage_progress.progress(55, text="Results filtered")
 
     # New: let the user select which results to scrape
     options = [f"{i+1}. {item['title'][:60]}" for i, item in enumerate(st.session_state.filtered)]
     idx_map = {f"{i+1}. {item['title'][:60]}": i for i, item in enumerate(st.session_state.filtered)}
-    selection = st.multiselect(
-        "Select results to scrape", options, default=options, help="Unselect to skip scraping specific results."
-    )
-    selected = [st.session_state.filtered[idx_map[label]] for label in selection]
+    
+    with st.expander("Select results to scrape", expanded=True):
+        ui.table(data=[{"title": item['title'], "url": item['link']} for item in st.session_state.filtered], checkbox=True, key="selection")
+    
+    selected = []
+    if "selection" in st.session_state and st.session_state.selection is not None:
+        selected = [st.session_state.filtered[i] for i in st.session_state.selection['selection']]
 
     # Stage 5 - Scrape content
     with status_slot.container():
@@ -187,46 +138,53 @@ if run_button and query:
         st.session_state.streamed_summary += chunk
         summary_slot.markdown(st.session_state.streamed_summary)
 
-    with summary_container_placeholder.container():  # border=True, height=450):
+    chosen_tab = ui.tabs(options=['Summary', 'Sources'], default_value='Summary', key='tabs')
+
+    if chosen_tab == 'Summary':
         hdr_col, btn_col = st.columns([4, 1], vertical_alignment="center")
         with hdr_col:
             st.subheader(":red[Investigation Summary]", anchor=None, divider="gray")
         summary_slot = st.empty()
 
-    # 6d) Inject your two callbacks and invoke exactly as before
-    with status_slot.container():
-        with st.spinner("✍️ Generating summary..."):
-            stream_handler = BufferedStreamingHandler(ui_callback=ui_emit)
-            llm.callbacks = [stream_handler]
-            _ = generate_summary(llm, query, st.session_state.scraped)
-    stage_progress.progress(95, text="Summary generated")
+        # 6d) Inject your two callbacks and invoke exactly as before
+        with status_slot.container():
+            with st.spinner("✍️ Generating summary..."):
+                stream_handler = BufferedStreamingHandler(ui_callback=ui_emit)
+                llm.callbacks = [stream_handler]
+                _ = generate_summary(llm, query, st.session_state.scraped)
+        stage_progress.progress(95, text="Summary generated")
 
-    with btn_col:
-        now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        fname = f"summary_{now}.md"
-        b64 = base64.b64encode(st.session_state.streamed_summary.encode()).decode()
-        href = f'<div class="aStyle">📥 <a href="data:file/markdown;base64,{b64}" download="{fname}">Download</a></div>'
-        st.markdown(href, unsafe_allow_html=True)
-    # Provide CSV/JSON export of sources
-    import json, pandas as pd
-    sources_df = pd.DataFrame([
-        {"url": url, "excerpt": text} for url, text in st.session_state.scraped.items()
-    ])
-    exp_col1, exp_col2 = st.columns(2)
-    with exp_col1:
-        st.download_button(
-            label="Download sources (CSV)",
-            data=sources_df.to_csv(index=False).encode("utf-8"),
-            file_name="sources.csv",
-            mime="text/csv",
-        )
-    with exp_col2:
-        st.download_button(
-            label="Download sources (JSON)",
-            data=json.dumps(sources_df.to_dict(orient="records"), ensure_ascii=False, indent=2),
-            file_name="sources.json",
-            mime="application/json",
-        )
+        with btn_col:
+            now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            fname = f"summary_{now}.md"
+            st.download_button(
+                label="Download Summary",
+                data=st.session_state.streamed_summary,
+                file_name=fname,
+                mime="text/markdown",
+            )
+        
+    if chosen_tab == 'Sources':
+        import json, pandas as pd
+        sources_df = pd.DataFrame([
+            {"url": url, "excerpt": text} for url, text in st.session_state.scraped.items()
+        ])
+        st.dataframe(sources_df)
+        exp_col1, exp_col2 = st.columns(2)
+        with exp_col1:
+            st.download_button(
+                label="Download sources (CSV)",
+                data=sources_df.to_csv(index=False).encode("utf-8"),
+                file_name="sources.csv",
+                mime="text/csv",
+            )
+        with exp_col2:
+            st.download_button(
+                label="Download sources (JSON)",
+                data=json.dumps(sources_df.to_dict(orient="records"), ensure_ascii=False, indent=2),
+                file_name="sources.json",
+                mime="application/json",
+            )
 
     stage_progress.progress(100, text="Done")
     status_slot.success("✔️ Pipeline completed successfully!")

@@ -20,7 +20,7 @@ def missing_model_env(model_choice: str):
         from config import ANTHROPIC_API_KEY
         if not ANTHROPIC_API_KEY:
             missing.append("ANTHROPIC_API_KEY")
-    elif m == "gemini-2.5-flash":
+    elif m in ("gemini-2.5-flash", "gemini-2.5-flash-preview-09-2025", "gemini-2.5-flash-lite"):
         from config import GOOGLE_API_KEY
         if not GOOGLE_API_KEY:
             missing.append("GOOGLE_API_KEY")

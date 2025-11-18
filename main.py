@@ -21,7 +21,7 @@ def robin():
     default="gpt4o",
     show_default=True,
     type=click.Choice(
-        ["gpt4o", "gpt-4.1", "claude-3-5-sonnet-latest", "llama3.1", "gemini-2.5-flash"]
+        ["gpt4o", "gpt-4.1", "claude-3-5-sonnet-latest", "llama3.1", "gemini-2.5-flash", "gemini-2.5-flash-preview-09-2025", "gemini-2.5-flash-lite"]
     ),
     help="Select LLM model to use (e.g., gpt4o, claude sonnet 3.5, ollama models)",
 )
