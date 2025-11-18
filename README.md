@@ -13,6 +13,19 @@
 
 ---
 
+## How it works
+
+Data flow: refine -> search -> filter -> select -> preview -> scrape -> summarize -> export
+
+- Refine: LLM refines your plain query for dark web search engines.
+- Search: queries multiple onion search engines over Tor.
+- Filter: LLM selects the most relevant results.
+- Select: you pick which results to investigate further.
+- Preview: optional one-click previews of selected pages to see early snippets.
+- Scrape: fetch and extract text (Tor for .onion, clearnet otherwise).
+- Summarize: token-aware chunked summarization with provenance and IOC hints.
+- Export: download sources (CSV/JSON) and the summary (Markdown).
+
 ## Features
 
 - ⚙️ **Modular Architecture** – Clean separation between search, scrape, and LLM workflows.

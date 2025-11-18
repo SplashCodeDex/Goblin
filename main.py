@@ -78,7 +78,11 @@ def cli(model, query, threads, output):
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filename = f"summary_{now}.md"
     else:
-        filename = output + ".md"
+        # Respect provided extension; default to .md if none
+        if any(output.lower().endswith(ext) for ext in [".md", ".markdown", ".txt", ".json"]):
+            filename = output
+        else:
+            filename = output + ".md"
 
     with open(filename, "w", encoding="utf-8") as f:
         f.write(summary)

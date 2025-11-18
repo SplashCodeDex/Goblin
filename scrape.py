@@ -28,7 +28,7 @@ USER_AGENTS = [
 request_counter = 0
 counter_lock = threading.Lock()
 
-def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=9051, control_password=None):
+def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=9051, control_password=None, request_timeout=30):
     """
     Scrapes a single URL.
     If the URL is an onion site, routes the request through Tor.
@@ -38,10 +38,14 @@ def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=9051, 
     use_tor = ".onion" in url
     proxies = None
     if use_tor:
-        proxies = {
-            "http": "socks5h://127.0.0.1:9050",
-            "https": "socks5h://127.0.0.1:9050"
-        }
+        try:
+            from search import get_tor_proxies
+            proxies = get_tor_proxies()
+        except Exception:
+            proxies = {
+                "http": "socks5h://127.0.0.1:9050",
+                "https": "socks5h://127.0.0.1:9050"
+            }
     headers = {
         "User-Agent": random.choice(USER_AGENTS)
     }
@@ -50,7 +54,7 @@ def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=9051, 
         last_exc = None
         for attempt in range(3):
             try:
-                response = requests.get(url, headers=headers, proxies=proxies, timeout=30)
+                response = requests.get(url, headers=headers, proxies=proxies, timeout=request_timeout)
                 break
             except Exception as e:
                 last_exc = e
@@ -69,7 +73,7 @@ def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=9051, 
 
     return url, scraped_text
 
-def scrape_multiple(urls_data, max_workers=5):
+def scrape_multiple(urls_data, max_workers=5, request_timeout=30, use_cache=True):
     """
     Scrapes multiple URLs concurrently using a thread pool.
     
@@ -82,14 +86,46 @@ def scrape_multiple(urls_data, max_workers=5):
     """
     results = {}
     max_chars = MAX_SCRAPE_CHARS  # Taking first n chars from the scraped data
+    # simple disk cache for scraped pages
+    import os, json, hashlib
+    def _cache_path(url: str):
+        h = hashlib.sha256(url.encode("utf-8")).hexdigest()
+        folder = os.path.join(".cache", "scrape")
+        os.makedirs(folder, exist_ok=True)
+        return os.path.join(folder, f"{h}.json")
+
+    cached = {}
+    to_fetch = []
+    if use_cache:
+        for url_data in urls_data:
+            p = _cache_path(url_data['link'])
+            if os.path.exists(p):
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        cached[url_data['link']] = json.load(f)
+                except Exception:
+                    to_fetch.append(url_data)
+            else:
+                to_fetch.append(url_data)
+    else:
+        to_fetch = list(urls_data)
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_url = {
-            executor.submit(scrape_single, url_data): url_data
-            for url_data in urls_data
+            executor.submit(scrape_single, url_data, False, 5, 9051, None, request_timeout): url_data
+            for url_data in to_fetch
         }
         for future in as_completed(future_to_url):
             url, content = future.result()
             if len(content) > max_chars:
                 content = content[:max_chars]
             results[url] = content
+            if use_cache:
+                try:
+                    with open(_cache_path(url), "w", encoding="utf-8") as f:
+                        json.dump(content, f, ensure_ascii=False)
+                except Exception:
+                    pass
+    # merge cached
+    results.update(cached)
     return results

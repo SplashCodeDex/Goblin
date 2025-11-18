@@ -1,5 +1,5 @@
 import requests
-import random, re, time, socket, logging
+import random, re, time, socket, logging, os, json, hashlib
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from config import TOR_SOCKS_HOST, TOR_SOCKS_PORT
@@ -66,14 +66,39 @@ def _request_with_retries(url, headers=None, proxies=None, timeout=30, max_retri
             time.sleep(sleep)
     raise last_exc
 
-def fetch_search_results(endpoint, query):
+def _disk_cache_path(prefix: str, key: str) -> str:
+    h = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    folder = os.path.join(".cache", prefix)
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, f"{h}.json")
+
+def _cache_get(prefix: str, key: str):
+    p = _disk_cache_path(prefix, key)
+    if os.path.exists(p):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+    return None
+
+def _cache_put(prefix: str, key: str, data):
+    p = _disk_cache_path(prefix, key)
+    try:
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def fetch_search_results(endpoint, query, request_timeout=30):
     url = endpoint.format(query=query)
     headers = {
         "User-Agent": random.choice(USER_AGENTS)
     }
     proxies = get_tor_proxies()
     try:
-        response = _request_with_retries(url, headers=headers, proxies=proxies, timeout=30)
+        response = _request_with_retries(url, headers=headers, proxies=proxies, timeout=request_timeout)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, "html.parser")
             links = []
@@ -100,16 +125,22 @@ def fetch_search_results(endpoint, query):
         logger.debug(f"request error for {url}: {e}")
         return []
 
-def get_search_results(refined_query, max_workers=5):
+def get_search_results(refined_query, max_workers=5, max_results=None, request_timeout=30, use_cache=True):
+    cache_key = json.dumps({"q": refined_query, "mw": max_workers, "to": request_timeout, "mr": max_results})
+    if use_cache:
+        cached = _cache_get("search", cache_key)
+        if cached is not None:
+            return cached
+
     results = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(fetch_search_results, endpoint, refined_query)
+        futures = [executor.submit(fetch_search_results, endpoint, refined_query, request_timeout)
                    for endpoint in SEARCH_ENGINE_ENDPOINTS]
         for future in as_completed(futures):
             result_urls = future.result()
             results.extend(result_urls)
 
-    # Deduplicate results based on the link.
+    # Deduplicate results based on the link, cap if max_results provided.
     seen_links = set()
     unique_results = []
     for res in results:
@@ -117,4 +148,8 @@ def get_search_results(refined_query, max_workers=5):
         if link not in seen_links:
             seen_links.add(link)
             unique_results.append(res)
+            if max_results and len(unique_results) >= max_results:
+                break
+    if use_cache:
+        _cache_put("search", cache_key, unique_results)
     return unique_results
