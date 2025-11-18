@@ -14,13 +14,13 @@ st.set_page_config(layout="wide", initial_sidebar_state="expanded", page_title="
 
 # Cache expensive backend calls
 @st.cache_data(ttl=200, show_spinner=False)
-def cached_search_results(refined_query: str, threads: int, max_results: int | None, request_timeout: int, use_cache: bool):
-    return get_search_results(refined_query.replace(" ", "+"), max_workers=threads, max_results=max_results, request_timeout=request_timeout, use_cache=use_cache)
+def cached_search_results(refined_query: str, threads: int, max_results: int | None, request_timeout: int, use_cache: bool, load_cached_only: bool):
+    return get_search_results(refined_query.replace(" ", "+"), max_workers=threads, max_results=max_results, request_timeout=request_timeout, use_cache=use_cache, load_cached_only=load_cached_only)
 
 
 @st.cache_data(ttl=200, show_spinner=False)
-def cached_scrape_multiple(filtered: list, threads: int, request_timeout: int, use_cache: bool):
-    return scrape_multiple(filtered, max_workers=threads, request_timeout=request_timeout, use_cache=use_cache)
+def cached_scrape_multiple(filtered: list, threads: int, request_timeout: int, use_cache: bool, load_cached_only: bool, translate_non_english: bool):
+    return scrape_multiple(filtered, max_workers=threads, request_timeout=request_timeout, use_cache=use_cache, load_cached_only=load_cached_only, translate_non_english=translate_non_english)
 
 # Sidebar
 with st.sidebar:
@@ -45,6 +45,9 @@ with st.sidebar:
         max_results = st.slider("Max search results", min_value=10, max_value=200, value=50, step=10)
         request_timeout = st.slider("Request timeout (seconds)", min_value=5, max_value=90, value=30, step=5)
         use_cache = st.checkbox("Use disk cache", value=True)
+        load_cached_only = st.checkbox("Load cached only (offline mode)", value=False)
+        translate_non_english = st.checkbox("Auto-translate non-English content", value=True)
+        compact_mode = st.checkbox("Compact results view", value=False)
 
     st.divider()
     st.subheader("History")
@@ -91,10 +94,63 @@ with st.sidebar:
 # Main UI - logo and input
 _, logo_col, _ = st.columns(3)
 with logo_col:
-    st.image(".github/assets/robin_logo.png", width=200)
+    st.image(".github/assets/robin_logo.png", width=160)
 
-# Display text box and button
-query = st.text_input(label="Enter Dark Web Search Query", placeholder="Enter Dark Web Search Query")
+# Playbooks and search input with right-aligned button
+playbooks = {
+    "Ransomware investigation": "ransomware gang leak site credentials logs",
+    "Credential leak": "database dump credentials password email combo leak",
+    "Zero-day chatter": "zero day exploit sale PoC CVE leak"
+}
+# Subtle styling for the Playbook button
+st.markdown(
+    """
+    <style>
+    .playbook-btn > button {
+        background: linear-gradient(135deg, #1f2937 0%, #0f172a 100%);
+        color: #e5e7eb !important;
+        border: 1px solid #334155;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        transition: transform 120ms ease, box-shadow 200ms ease, background 300ms ease;
+        border-radius: 10px;
+        padding: 0.55rem 0.9rem;
+    }
+    .playbook-btn > button:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,0.35); }
+    .playbook-btn > button:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+if 'query' not in st.session_state:
+    st.session_state.query = ""
+if 'show_playbooks' not in st.session_state:
+    st.session_state.show_playbooks = False
+
+inp_col, btn_col = st.columns([10, 2])
+with inp_col:
+    query = st.text_input(
+        label="Enter Dark Web Search Query",
+        placeholder="Enter Dark Web Search Query",
+        key="query_input",
+        value=st.session_state.query,
+    )
+    st.session_state.query = query
+with btn_col:
+    if st.button("Playbook", key="playbook_button", help="Open playbook presets", type="secondary"):
+        st.session_state.show_playbooks = not st.session_state.show_playbooks
+    # Apply class to style above via HTML block
+    st.markdown('<div class="playbook-btn"></div>', unsafe_allow_html=True)
+
+if st.session_state.show_playbooks:
+    with st.expander("Playbooks", expanded=True):
+        pick = st.radio("Choose a playbook", options=["(none)"] + list(playbooks.keys()), index=0, horizontal=False)
+        if pick and pick != "(none)":
+            st.session_state.query = playbooks[pick]
+            st.session_state.query_input = playbooks[pick]
+            st.success(f"Loaded playbook: {pick}")
+        st.caption("You can edit the prefilled query before running.")
+
 run_button = st.button("Run", key="run_button")
 
 # Display a status message
@@ -142,10 +198,12 @@ if run_button and query:
     with status_slot.container():
         with st.spinner("🔍 Searching dark web..."):
             st.session_state.results = cached_search_results(
-                st.session_state.refined, threads, max_results, request_timeout, use_cache
+                st.session_state.refined, threads, max_results, request_timeout, use_cache, load_cached_only
             )
     with p2:
         ui.card(title="Search Results", content=f"{len(st.session_state.results)} results found")
+        if load_cached_only and not st.session_state.results:
+            st.info("Offline mode is ON and no cached search for this query was found.")
     stage_progress.progress(40, text="Search completed")
 
     # Stage 4 - Filter results
@@ -156,6 +214,8 @@ if run_button and query:
             )
     with p3:
         ui.card(title="Filtered Results", content=f"{len(st.session_state.filtered)} results filtered")
+        if compact_mode:
+            st.caption("Compact view enabled.")
     stage_progress.progress(55, text="Results filtered")
 
     # New: let the user select which results to scrape
@@ -165,7 +225,7 @@ if run_button and query:
     with st.expander("Select results to scrape", expanded=True):
         import pandas as pd
         table_df = pd.DataFrame([{"title": item['title'], "url": item['link']} for item in st.session_state.filtered])
-        st.dataframe(table_df)
+        st.dataframe(table_df, use_container_width=True, height=300 if compact_mode else 500)
         selected = st.multiselect("Select result indices to scrape", options=list(range(len(table_df))), format_func=lambda i: table_df.iloc[i]["title"])        
         prev_col, act_col = st.columns([1,1])
         with prev_col:
@@ -204,6 +264,7 @@ if run_button and query:
 
     if st.session_state.preview_ready:
         st.subheader("Selected previews")
+        st.caption("Previews may omit media. Blocked/CAPTCHA pages are flagged in scrape metadata.")
         import pandas as pd
         st.dataframe(pd.DataFrame(st.session_state.previews))
 
@@ -211,8 +272,8 @@ if run_button and query:
     if proceed_btn and selected:
         with status_slot.container():
             with st.spinner("📜 Scraping content..."):
-                st.session_state.scraped = cached_scrape_multiple(
-                    selected, threads, request_timeout, use_cache
+                st.session_state.scraped, st.session_state.scrape_meta = cached_scrape_multiple(
+                    selected, threads, request_timeout, use_cache, load_cached_only, translate_non_english
                 )
         stage_progress.progress(75, text="Scraping complete")
 
@@ -228,6 +289,9 @@ if run_button and query:
         chosen_tab = ui.tabs(options=['Summary', 'Sources'], default_value='Summary', key='tabs')
 
         if chosen_tab == 'Summary':
+            # Diagnostics card
+            with st.expander("Diagnostics", expanded=False):
+                st.caption(f"Tor running: {'Yes' if is_tor_running() else 'No'} | Offline mode: {'Yes' if load_cached_only else 'No'} | Translate: {'Yes' if translate_non_english else 'No'}")
             hdr_col, btn_col = st.columns([4, 1], vertical_alignment="center")
             with hdr_col:
                 st.subheader(":red[Investigation Summary]", anchor=None, divider="gray")
@@ -255,6 +319,12 @@ if run_button and query:
                 )
             
         if chosen_tab == 'Sources':
+            # Show scrape metadata table
+            import pandas as pd, json
+            meta_list = list(st.session_state.get('scrape_meta', {}).values())
+            if meta_list:
+                st.subheader("Scrape metadata")
+                st.dataframe(pd.DataFrame(meta_list))
             import json, pandas as pd
             sources_df = pd.DataFrame([
                 {"url": url, "excerpt": text} for url, text in st.session_state.scraped.items()
@@ -283,6 +353,31 @@ if run_button and query:
                     mime="application/json",
                 )
 
+            # MISP export
+            def build_misp_event(artifacts: dict, info: str):
+                import uuid, time
+                attrs = []
+                cat_map = {"ipv4": "ip-src", "domains": "domain", "emails": "email-src", "btc": "btc", "eth": "eth"}
+                for k, vals in artifacts.items():
+                    for v in vals:
+                        attrs.append({"type": cat_map.get(k, "text"), "value": v, "category": "External analysis"})
+                return {
+                    "Event": {
+                        "uuid": str(uuid.uuid4()),
+                        "info": info,
+                        "date": str(pd.Timestamp.utcnow().date()),
+                        "Attribute": attrs
+                    }
+                }
+            with st.expander("MISP export", expanded=False):
+                misp_json = build_misp_event(artifacts, f"Dark web OSINT for: {query}")
+                st.download_button(
+                    label="Download MISP Event (JSON)",
+                    data=json.dumps(misp_json, ensure_ascii=False, indent=2),
+                    file_name="misp_event.json",
+                    mime="application/json",
+                )
+
             # Artifacts export
             st.subheader("Artifacts")
             artifacts = st.session_state.get("artifacts", {})
@@ -305,6 +400,25 @@ if run_button and query:
                     file_name="artifacts.json",
                     mime="application/json",
                 )
+
+        # Simple Watchlists and Alerts
+        if 'watchlists' not in st.session_state:
+            st.session_state.watchlists = {"keywords": []}
+        with st.expander("Watchlists & Alerts", expanded=False):
+            new_kw = st.text_input("Add keyword to watchlist", value="")
+            if st.button("Add keyword") and new_kw:
+                st.session_state.watchlists["keywords"].append(new_kw)
+            if st.session_state.watchlists["keywords"]:
+                st.write("Current keywords:", st.session_state.watchlists["keywords"])
+                # Alert: show hits in scraped content
+                hits = []
+                for url, txt in st.session_state.scraped.items():
+                    for kw in st.session_state.watchlists["keywords"]:
+                        if kw.lower() in txt.lower():
+                            hits.append({"keyword": kw, "url": url})
+                if hits:
+                    st.success(f"Alerts: {len(hits)} hits found")
+                    st.dataframe(pd.DataFrame(hits))
 
         # Persist run to history
         try:

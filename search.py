@@ -125,28 +125,42 @@ def fetch_search_results(endpoint, query, request_timeout=30):
         logger.debug(f"request error for {url}: {e}")
         return []
 
-def get_search_results(refined_query, max_workers=5, max_results=None, request_timeout=30, use_cache=True):
+def _canonicalize_url(url: str) -> str:
+    try:
+        from urllib.parse import urlparse, urlunparse
+        u = urlparse(url)
+        netloc = u.hostname.lower() if u.hostname else u.netloc.lower()
+        path = u.path or '/'
+        # drop query/fragment for dedupe
+        clean = urlunparse((u.scheme, netloc, path, '', '', ''))
+        return clean
+    except Exception:
+        return url
+
+
+def get_search_results(refined_query, max_workers=5, max_results=None, request_timeout=30, use_cache=True, load_cached_only=False):
     cache_key = json.dumps({"q": refined_query, "mw": max_workers, "to": request_timeout, "mr": max_results})
     if use_cache:
         cached = _cache_get("search", cache_key)
         if cached is not None:
             return cached
-
     results = []
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(fetch_search_results, endpoint, refined_query, request_timeout)
-                   for endpoint in SEARCH_ENGINE_ENDPOINTS]
-        for future in as_completed(futures):
-            result_urls = future.result()
-            results.extend(result_urls)
-
-    # Deduplicate results based on the link, cap if max_results provided.
+    if not load_cached_only:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(fetch_search_results, endpoint, refined_query, request_timeout)
+                       for endpoint in SEARCH_ENGINE_ENDPOINTS]
+            for future in as_completed(futures):
+                result_urls = future.result()
+                results.extend(result_urls)
+    # Deduplicate results based on canonicalized link, cap if max_results provided.
     seen_links = set()
     unique_results = []
     for res in results:
         link = res.get("link")
-        if link not in seen_links:
-            seen_links.add(link)
+        canon = _canonicalize_url(link)
+        if canon not in seen_links:
+            seen_links.add(canon)
+            # keep original title/link
             unique_results.append(res)
             if max_results and len(unique_results) >= max_results:
                 break

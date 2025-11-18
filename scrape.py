@@ -28,7 +28,7 @@ USER_AGENTS = [
 request_counter = 0
 counter_lock = threading.Lock()
 
-def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=9051, control_password=None, request_timeout=30):
+def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=9051, control_password=None, request_timeout=30, translate_non_english=True, offline_only=False):
     """
     Scrapes a single URL.
     If the URL is an onion site, routes the request through Tor.
@@ -49,31 +49,77 @@ def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=9051, 
     headers = {
         "User-Agent": random.choice(USER_AGENTS)
     }
+    meta = {"url": url, "used_tor": use_tor, "status": None, "content_type": None, "language": None, "translated": False, "blocked": False, "from_cache": False}
     try:
         # simple retry/backoff
         last_exc = None
-        for attempt in range(3):
+        response = None
+        for attempt in range(4):
             try:
-                response = requests.get(url, headers=headers, proxies=proxies, timeout=request_timeout)
+                response = requests.get(url, headers=headers, proxies=proxies, timeout=request_timeout, stream=True)
                 break
             except Exception as e:
                 last_exc = e
-                time.sleep(0.5 * (2 ** attempt) + random.random() * 0.2)
+                time.sleep(0.7 * (2 ** attempt) + random.random() * 0.3)
         else:
             raise last_exc
 
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, "html.parser")
-            scraped_text = url_data['title'] + " " + soup.get_text().replace('\n', ' ').replace('\r', '')
-        else:
-            scraped_text = url_data['title']
+        meta["status"] = getattr(response, 'status_code', None)
+        ctype = response.headers.get('Content-Type', '') if response is not None else ''
+        meta["content_type"] = ctype
+        text_content = ""
+        if response is not None and response.status_code == 200:
+            if 'application/pdf' in ctype or url.lower().endswith('.pdf'):
+                # PDF extraction
+                try:
+                    import io, pdfplumber
+                    file_bytes = response.content
+                    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                        pages = [p.extract_text() or '' for p in pdf.pages]
+                        text_content = "\n".join(pages)
+                except Exception as _:
+                    text_content = ""
+            elif any(ext in ctype for ext in ['image/', 'application/octet-stream']) or any(url.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff']):
+                # OCR for images
+                try:
+                    from PIL import Image
+                    import io, pytesseract
+                    img = Image.open(io.BytesIO(response.content))
+                    text_content = pytesseract.image_to_string(img)
+                except Exception:
+                    text_content = ""
+            else:
+                # HTML/text
+                response.encoding = response.apparent_encoding or response.encoding
+                soup = BeautifulSoup(response.text, "html.parser")
+                text_content = soup.get_text(" ").replace('\n', ' ').replace('\r', '')
+                # CAPTCHA/anti-bot heuristics
+                low = text_content.lower()
+                if any(k in low for k in ["captcha", "are you a robot", "unusual traffic", "cloudflare", "access denied"]):
+                    meta["blocked"] = True
+        scraped_text = (url_data['title'] + " " + text_content).strip() if text_content else url_data['title']
+
+        # Language detection and optional translation
+        if scraped_text and translate_non_english:
+            try:
+                from langdetect import detect
+                lang = detect(scraped_text[:2000])
+                meta["language"] = lang
+                if lang != 'en':
+                    from googletrans import Translator
+                    tr = Translator()
+                    translated = tr.translate(scraped_text, dest='en')
+                    scraped_text = translated.text
+                    meta["translated"] = True
+            except Exception:
+                pass
     except Exception as e:
         logger.debug(f"scrape error for {url}: {e}")
         scraped_text = url_data['title']
 
-    return url, scraped_text
+    return url, scraped_text, meta
 
-def scrape_multiple(urls_data, max_workers=5, request_timeout=30, use_cache=True):
+def scrape_multiple(urls_data, max_workers=5, request_timeout=30, use_cache=True, load_cached_only=False, translate_non_english=True):
     """
     Scrapes multiple URLs concurrently using a thread pool.
     
@@ -85,6 +131,7 @@ def scrape_multiple(urls_data, max_workers=5, request_timeout=30, use_cache=True
       A dictionary mapping each URL to its scraped content.
     """
     results = {}
+    meta = {}
     max_chars = MAX_SCRAPE_CHARS  # Taking first n chars from the scraped data
     # simple disk cache for scraped pages
     import os, json, hashlib
@@ -104,28 +151,36 @@ def scrape_multiple(urls_data, max_workers=5, request_timeout=30, use_cache=True
                     with open(p, "r", encoding="utf-8") as f:
                         cached[url_data['link']] = json.load(f)
                 except Exception:
-                    to_fetch.append(url_data)
+                    if not load_cached_only:
+                        to_fetch.append(url_data)
             else:
-                to_fetch.append(url_data)
+                if not load_cached_only:
+                    to_fetch.append(url_data)
     else:
         to_fetch = list(urls_data)
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_url = {
-            executor.submit(scrape_single, url_data, False, 5, 9051, None, request_timeout): url_data
-            for url_data in to_fetch
-        }
-        for future in as_completed(future_to_url):
-            url, content = future.result()
-            if len(content) > max_chars:
-                content = content[:max_chars]
-            results[url] = content
-            if use_cache:
-                try:
-                    with open(_cache_path(url), "w", encoding="utf-8") as f:
-                        json.dump(content, f, ensure_ascii=False)
-                except Exception:
-                    pass
+    if to_fetch:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_url = {
+                executor.submit(scrape_single, url_data, False, 5, 9051, None, request_timeout, translate_non_english): url_data
+                for url_data in to_fetch
+            }
+            for future in as_completed(future_to_url):
+                url, content, m = future.result()
+                if len(content) > max_chars:
+                    content = content[:max_chars]
+                results[url] = content
+                meta[url] = m
+                if use_cache:
+                    try:
+                        with open(_cache_path(url), "w", encoding="utf-8") as f:
+                            json.dump(content, f, ensure_ascii=False)
+                    except Exception:
+                        pass
+
     # merge cached
-    results.update(cached)
-    return results
+    for url, content in cached.items():
+        results[url] = content
+        meta[url] = {"url": url, "from_cache": True}
+
+    return results, meta
