@@ -4,17 +4,19 @@ set -euo pipefail
 echo "Starting Tor..."
 tor &
 
-# Wait for Tor SOCKS to be ready (127.0.0.1:9050), up to ~60s
-ATTEMPTS=0
-until (echo > /dev/tcp/127.0.0.1/9050) 2>/dev/null; do
-  ATTEMPTS=$((ATTEMPTS+1))
-  if [ "$ATTEMPTS" -gt 60 ]; then
-    echo "Tor did not become ready in time. Exiting."
-    exit 1
-  fi
-  echo "Waiting for Tor SOCKS (9050)..."
-  sleep 1
+echo "Waiting for Tor to be ready..."
+# Wait for port 9050 to be open
+timeout=60
+while ! (echo > /dev/tcp/127.0.0.1/9050) >/dev/null 2>&1; do
+    if [ "$timeout" -le 0 ]; then
+        echo "Tor failed to start on port 9050."
+        exit 1
+    fi
+    sleep 1
+    timeout=$((timeout - 1))
 done
 
-echo "Starting Robin: AI-Powered Dark Web OSINT Tool..."
+echo "Tor is ready."
+echo "Starting Robin - AI-Powered Dark Web OSINT Tool..."
+
 exec python main.py "$@"

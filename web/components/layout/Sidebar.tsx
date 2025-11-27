@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { LayoutDashboard, History, CalendarClock, Settings, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ModeToggle } from "@/components/ui/mode-toggle"
 
 const navItems = [
     { name: "Investigate", href: "/", icon: LayoutDashboard },
@@ -60,6 +61,10 @@ export function Sidebar() {
             </nav>
 
             <div className="p-4 border-t border-zinc-800 flex flex-col gap-4">
+                <div className="flex justify-center w-full">
+                    <ModeToggle />
+                </div>
+
                 <Button
                     variant="ghost"
                     size="icon"

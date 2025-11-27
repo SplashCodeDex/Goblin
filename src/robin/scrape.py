@@ -1,6 +1,8 @@
 import random, time, logging
 import requests
 import threading
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .config import MAX_SCRAPE_CHARS
@@ -28,7 +30,29 @@ USER_AGENTS = [
 request_counter = 0
 counter_lock = threading.Lock()
 
-def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=9051, control_password=None, request_timeout=30, translate_non_english=True, offline_only=False):
+def get_tor_session():
+    """
+    Creates a requests Session with Tor SOCKS proxy and automatic retries.
+    """
+    session = requests.Session()
+    retry = Retry(
+        total=3,
+        read=3,
+        connect=3,
+        backoff_factor=0.3,
+        status_forcelist=[500, 502, 503, 504]
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    session.proxies = {
+        "http": "socks5h://127.0.0.1:9050",
+        "https": "socks5h://127.0.0.1:9050"
+    }
+    return session
+
+def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=9051, control_password=None, request_timeout=45, translate_non_english=True, offline_only=False):
     """
     Scrapes a single URL.
     If the URL is an onion site, routes the request through Tor.
@@ -36,38 +60,24 @@ def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=9051, 
     """
     url = url_data['link']
     use_tor = ".onion" in url
-    proxies = None
-    if use_tor:
-        try:
-            from .search import get_tor_proxies
-            proxies = get_tor_proxies()
-        except Exception:
-            proxies = {
-                "http": "socks5h://127.0.0.1:9050",
-                "https": "socks5h://127.0.0.1:9050"
-            }
+
     headers = {
         "User-Agent": random.choice(USER_AGENTS)
     }
     meta = {"url": url, "used_tor": use_tor, "status": None, "content_type": None, "language": None, "translated": False, "blocked": False, "from_cache": False}
+
     try:
-        # simple retry/backoff
-        last_exc = None
-        response = None
-        for attempt in range(4):
-            try:
-                response = requests.get(url, headers=headers, proxies=proxies, timeout=request_timeout, stream=True)
-                break
-            except Exception as e:
-                last_exc = e
-                time.sleep(0.7 * (2 ** attempt) + random.random() * 0.3)
+        if use_tor:
+            session = get_tor_session()
+            response = session.get(url, headers=headers, timeout=request_timeout)
         else:
-            raise last_exc
+            response = requests.get(url, headers=headers, timeout=30)
 
         meta["status"] = getattr(response, 'status_code', None)
         ctype = response.headers.get('Content-Type', '') if response is not None else ''
         meta["content_type"] = ctype
         text_content = ""
+
         if response is not None and response.status_code == 200:
             if 'application/pdf' in ctype or url.lower().endswith('.pdf'):
                 # PDF extraction
@@ -92,11 +102,20 @@ def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=9051, 
                 # HTML/text
                 response.encoding = response.apparent_encoding or response.encoding
                 soup = BeautifulSoup(response.text, "html.parser")
-                text_content = soup.get_text(" ").replace('\n', ' ').replace('\r', '')
+
+                # Clean up text: remove scripts/styles
+                for script in soup(["script", "style"]):
+                    script.extract()
+
+                text_content = soup.get_text(separator=' ')
+                # Normalize whitespace
+                text_content = ' '.join(text_content.split())
+
                 # CAPTCHA/anti-bot heuristics
                 low = text_content.lower()
                 if any(k in low for k in ["captcha", "are you a robot", "unusual traffic", "cloudflare", "access denied"]):
                     meta["blocked"] = True
+
         scraped_text = (url_data['title'] + " " + text_content).strip() if text_content else url_data['title']
 
         # Language detection and optional translation
