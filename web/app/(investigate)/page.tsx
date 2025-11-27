@@ -47,7 +47,6 @@ export default function InvestigatePage() {
   }
   const [query, setQuery] = useState("")
 
-  const [refinedText, setRefinedText] = useState("")
   const [results, setResults] = useState<any[]>([])
   const [filteredRes, setFilteredRes] = useState<any[]>([])
   const [scrapeState, setScrapeState] = useState({ inProgress: false, percent: 0, sources: [] as { url: string; excerpt: string }[] })
@@ -97,35 +96,30 @@ export default function InvestigatePage() {
     }
   }
 
-  async function onRefine() {
+  async function onSearch() {
     try {
-      const r = await refine(model, query)
-      setRefinedText(r.refined)
-      toast({ description: "Refined" })
+      setSearchInProgress(true)
+      const r = await search(query, threads, maxResults, requestTimeout, useCache, loadCachedOnly)
+      setResults(r.results)
+      toast({ description: "Search done" })
+
+      // Check health/model status in background
       await checkHealth()
       try {
         const ms = await modelStatus(model)
         setStatus(s => ({ ...s, modelReady: ms.ready, missing: ms.missing }))
       } catch { }
-    } catch (e: any) {
-      toast({ description: e?.message || "Refine failed", variant: "destructive" })
-    }
-  }
-  async function onSearch() {
-    try {
-      setSearchInProgress(true)
-      const r = await search(refinedText, threads, maxResults, requestTimeout, useCache, loadCachedOnly)
-      setResults(r.results)
-      toast({ description: "Search done" })
+
     } catch (e: any) {
       toast({ description: e?.message || "Search failed", variant: "destructive" })
     } finally {
       setSearchInProgress(false)
     }
   }
+
   async function onFilter() {
     try {
-      const r = await filter(model, refinedText, results)
+      const r = await filter(model, query, results)
       setFilteredRes(r.filtered)
       // initialize selection: select all
       const m: Record<string, boolean> = {}
@@ -136,6 +130,7 @@ export default function InvestigatePage() {
       toast({ description: e?.message || "Filter failed", variant: "destructive" })
     }
   }
+
   async function onScrape() {
     try {
       setScrapeState(s => ({ ...s, inProgress: true, percent: 0 }))
@@ -180,7 +175,6 @@ export default function InvestigatePage() {
 
   function onLoadHistory(run: any) {
     setQuery(run.query)
-    setRefinedText(run.refined || "")
     setResults(run.results || [])
     if (run.scraped && Object.keys(run.scraped).length > 0) {
       const sources = Object.entries(run.scraped).map(([url, excerpt]) => ({ url, excerpt: String(excerpt) }))
@@ -233,7 +227,7 @@ export default function InvestigatePage() {
           <Card className="p-5 space-y-6 border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
             <div>
               <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4">Control Center</h2>
-              <SearchForm model={model} setModel={setModel} query={query} setQuery={setQuery} onRefine={onRefine} refined={refinedText} />
+              <SearchForm model={model} setModel={setModel} query={query} setQuery={setQuery} />
             </div>
             <Separator className="bg-zinc-800" />
             <Playbooks onSelect={(q) => { setQuery(q); toast({ description: "Playbook loaded" }) }} />
@@ -246,7 +240,7 @@ export default function InvestigatePage() {
         <div className="col-span-12 lg:col-span-9 space-y-6">
           <Card className="p-5 border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
             <ProgressSteps
-              refined={!!refinedText}
+              hasQuery={!!query.trim()}
               searchInProgress={searchInProgress}
               resultsCount={results.length}
               filteredCount={filteredRes.length}
@@ -294,7 +288,7 @@ export default function InvestigatePage() {
             )}
 
             <TabsContent value="overview" className="mt-0">
-              <SummaryCard refined={refinedText} summary={summaryText} />
+              <SummaryCard refined={query} summary={summaryText} />
             </TabsContent>
             <TabsContent value="results" className="mt-0">
               <ResultsTable data={filteredRes} selectedMap={selectedMap} setSelectedMap={setSelectedMap} />

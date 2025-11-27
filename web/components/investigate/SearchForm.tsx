@@ -14,10 +14,8 @@ export function SearchForm(props: {
   setModel: (v: string) => void
   query: string
   setQuery: (v: string) => void
-  onRefine: () => Promise<void>
-  refined: string
 }) {
-  const { model, setModel, query, setQuery, onRefine, refined } = props
+  const { model, setModel, query, setQuery } = props
   return (
     <div className="grid gap-6">
       <div className="grid gap-2">
@@ -38,10 +36,6 @@ export function SearchForm(props: {
       <div className="grid gap-2">
         <label className="text-sm text-zinc-300">Query</label>
         <Textarea value={query} onChange={e => setQuery(e.target.value)} placeholder="Enter dark web search query" />
-      </div>
-      <div className="flex gap-3 items-center">
-        <Button onClick={onRefine} className="px-5">Refine</Button>
-        {refined && <span className="text-sm text-zinc-400 truncate">Refined: {refined}</span>}
       </div>
     </div>
   )

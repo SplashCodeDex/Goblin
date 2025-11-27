@@ -4,7 +4,7 @@ import { Progress } from "@/components/ui/progress"
 import { Search, Filter, FileText } from "lucide-react"
 
 export function ProgressSteps(props: {
-  refined: boolean
+  hasQuery: boolean
   searchInProgress: boolean
   resultsCount: number
   filteredCount: number
@@ -14,7 +14,7 @@ export function ProgressSteps(props: {
   onFilter: () => Promise<void>
   onScrape: () => Promise<void>
 }) {
-  const { refined, searchInProgress, resultsCount, filteredCount, scraping, hasSummary, onSearch, onFilter, onScrape } = props
+  const { hasQuery, searchInProgress, resultsCount, filteredCount, scraping, hasSummary, onSearch, onFilter, onScrape } = props
   return (
     <div className="grid md:grid-cols-3 gap-6 relative">
       {/* Connecting lines for desktop */}
@@ -35,11 +35,12 @@ export function ProgressSteps(props: {
           size="sm"
           className="w-full"
           onClick={onSearch}
-          disabled={!refined || searchInProgress}
+          disabled={!hasQuery || searchInProgress}
           variant={resultsCount > 0 ? "outline" : "default"}
         >
           {searchInProgress ? "Searching..." : resultsCount > 0 ? "Re-run Search" : "Run Search"}
         </Button>
+        {!hasQuery && <p className="text-xs text-center text-zinc-500">Enter a query to search</p>}
       </div>
 
       {/* Step 2: Filter */}
