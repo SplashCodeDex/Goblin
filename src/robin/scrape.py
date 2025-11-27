@@ -5,7 +5,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from .config import MAX_SCRAPE_CHARS
+from .config import MAX_SCRAPE_CHARS, TOR_SOCKS_HOST, TOR_SOCKS_PORT, TOR_CONTROL_PORT
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -47,12 +47,12 @@ def get_tor_session():
     session.mount("https://", adapter)
 
     session.proxies = {
-        "http": "socks5h://127.0.0.1:9050",
-        "https": "socks5h://127.0.0.1:9050"
+        "http": f"socks5h://{TOR_SOCKS_HOST}:{TOR_SOCKS_PORT}",
+        "https": f"socks5h://{TOR_SOCKS_HOST}:{TOR_SOCKS_PORT}"
     }
     return session
 
-def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=9051, control_password=None, request_timeout=45, translate_non_english=True, offline_only=False):
+def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=TOR_CONTROL_PORT, control_password=None, request_timeout=45, translate_non_english=True, offline_only=False):
     """
     Scrapes a single URL.
     If the URL is an onion site, routes the request through Tor.
@@ -181,7 +181,7 @@ def scrape_multiple(urls_data, max_workers=5, request_timeout=30, use_cache=True
     if to_fetch:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_url = {
-                executor.submit(scrape_single, url_data, False, 5, 9051, None, request_timeout, translate_non_english): url_data
+                executor.submit(scrape_single, url_data, False, 5, TOR_CONTROL_PORT, None, request_timeout, translate_non_english): url_data
                 for url_data in to_fetch
             }
             for future in as_completed(future_to_url):
