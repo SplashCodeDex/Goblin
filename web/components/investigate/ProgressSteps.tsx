@@ -5,6 +5,7 @@ import { Search, Filter, FileText } from "lucide-react"
 
 export function ProgressSteps(props: {
   refined: boolean
+  searchInProgress: boolean
   resultsCount: number
   filteredCount: number
   scraping: { inProgress: boolean; percent: number }
@@ -13,7 +14,7 @@ export function ProgressSteps(props: {
   onFilter: () => Promise<void>
   onScrape: () => Promise<void>
 }) {
-  const { refined, resultsCount, filteredCount, scraping, hasSummary, onSearch, onFilter, onScrape } = props
+  const { refined, searchInProgress, resultsCount, filteredCount, scraping, hasSummary, onSearch, onFilter, onScrape } = props
   return (
     <div className="grid md:grid-cols-3 gap-6 relative">
       {/* Connecting lines for desktop */}
@@ -34,10 +35,10 @@ export function ProgressSteps(props: {
           size="sm"
           className="w-full"
           onClick={onSearch}
-          disabled={!refined}
+          disabled={!refined || searchInProgress}
           variant={resultsCount > 0 ? "outline" : "default"}
         >
-          {resultsCount > 0 ? "Re-run Search" : "Run Search"}
+          {searchInProgress ? "Searching..." : resultsCount > 0 ? "Re-run Search" : "Run Search"}
         </Button>
       </div>
 

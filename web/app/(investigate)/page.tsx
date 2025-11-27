@@ -69,6 +69,8 @@ export default function InvestigatePage() {
   const [keywords, setKeywords] = useState<string[]>([])
   const [hits, setHits] = useState<{ keyword: string; url: string }[]>([])
 
+  const [searchInProgress, setSearchInProgress] = useState(false)
+
   // Watchlist logic
   useEffect(() => {
     if (scrapeState.sources.length === 0 || keywords.length === 0) {
@@ -111,11 +113,14 @@ export default function InvestigatePage() {
   }
   async function onSearch() {
     try {
+      setSearchInProgress(true)
       const r = await search(refinedText, threads, maxResults, requestTimeout, useCache, loadCachedOnly)
       setResults(r.results)
       toast({ description: "Search done" })
     } catch (e: any) {
       toast({ description: e?.message || "Search failed", variant: "destructive" })
+    } finally {
+      setSearchInProgress(false)
     }
   }
   async function onFilter() {
@@ -242,6 +247,7 @@ export default function InvestigatePage() {
           <Card className="p-5 border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
             <ProgressSteps
               refined={!!refinedText}
+              searchInProgress={searchInProgress}
               resultsCount={results.length}
               filteredCount={filteredRes.length}
               scraping={{ inProgress: scrapeState.inProgress, percent: scrapeState.percent }}
