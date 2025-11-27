@@ -188,7 +188,21 @@ async def api_summary(req: SummaryReq):
 
     # Use generate_summary_and_artifacts instead of generate_summary
     from robin.llm import generate_summary_and_artifacts
-    result = generate_summary_and_artifacts(llm, req.query, req.scraped)
+
+    # Safety: Truncate scraped content if it's too large to prevent context overflow
+    # This is a rough safety net; the LLM function might do its own chunking,
+    # but we want to avoid sending massive payloads.
+    safe_scraped = {}
+    MAX_TOTAL_CHARS = 100000 # 100k chars approx 25k tokens, safe for most large context models
+    current_chars = 0
+    for k, v in req.scraped.items():
+        if current_chars >= MAX_TOTAL_CHARS:
+            break
+        limit = min(len(v), MAX_TOTAL_CHARS - current_chars)
+        safe_scraped[k] = v[:limit]
+        current_chars += limit
+
+    result = generate_summary_and_artifacts(llm, req.query, safe_scraped)
 
     summary_text = result.get("summary", "")
     artifacts = result.get("artifacts", {})
@@ -299,6 +313,9 @@ class ScheduleReq(BaseModel):
 
 @app.post("/api/schedule")
 async def api_schedule(req: ScheduleReq):
+    from croniter import croniter
+    if not croniter.is_valid(req.schedule):
+        raise HTTPException(status_code=400, detail="Invalid cron schedule format")
     save_scheduled_query(req.name, req.query_text, req.schedule, req.search_engines)
     return {"status": "ok"}
 

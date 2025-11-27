@@ -1,14 +1,3 @@
-import requests
-import random, re, time, socket, logging, os, json, hashlib
-from bs4 import BeautifulSoup
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from .config import TOR_SOCKS_HOST, TOR_SOCKS_PORT
-
-import warnings
-warnings.filterwarnings("ignore")
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",

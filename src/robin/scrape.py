@@ -126,7 +126,8 @@ def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=TOR_CO
                     with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
                         pages = [p.extract_text() or '' for p in pdf.pages]
                         text_content = "\n".join(pages)
-                except Exception as _:
+                except Exception as e:
+                    logger.warning(f"PDF extraction failed for {url}: {e}")
                     text_content = ""
             elif any(ext in ctype for ext in ['image/', 'application/octet-stream']) or any(url.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff']):
                 # OCR for images
@@ -135,7 +136,8 @@ def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=TOR_CO
                     import io, pytesseract
                     img = Image.open(io.BytesIO(response.content))
                     text_content = pytesseract.image_to_string(img)
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"OCR failed for {url}: {e}")
                     text_content = ""
             else:
                 # HTML/text

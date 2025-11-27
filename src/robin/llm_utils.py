@@ -45,30 +45,37 @@ _common_llm_params = {
 _llm_config_map = {
     'gpt4o': {
         'class': ChatOpenAI,
-        'constructor_params': {'model_name': 'gpt-4o'}
+        'constructor_params': {'model_name': 'gpt-4o'},
+        'required_env': ['OPENAI_API_KEY']
     },
     'gpt-4.1': {
         'class': ChatOpenAI,
-        'constructor_params': {'model_name': 'gpt-4.1'}
+        'constructor_params': {'model_name': 'gpt-4.1'},
+        'required_env': ['OPENAI_API_KEY']
     },
     'claude-3-5-sonnet-latest': {
         'class': ChatAnthropic,
-        'constructor_params': {'model': 'claude-3-5-sonnet-latest'}
+        'constructor_params': {'model': 'claude-3-5-sonnet-latest'},
+        'required_env': ['ANTHROPIC_API_KEY']
     },
     'llama3.1': {
         'class': ChatOllama,
-        'constructor_params': {'model': 'llama3.1:latest', 'base_url': OLLAMA_BASE_URL}
+        'constructor_params': {'model': 'llama3.1:latest', 'base_url': OLLAMA_BASE_URL},
+        'required_env': ['OLLAMA_BASE_URL']
     },
     'gemini-2.5-flash': {
         'class': ChatGoogleGenerativeAI,
-        'constructor_params': {'model': 'gemini-2.5-flash'}
+        'constructor_params': {'model': 'gemini-2.5-flash'},
+        'required_env': ['GOOGLE_API_KEY']
     },
     'gemini-2.5-flash-preview-09-2025': {
         'class': ChatGoogleGenerativeAI,
-        'constructor_params': {'model': 'gemini-2.5-flash-preview-09-2025'}
+        'constructor_params': {'model': 'gemini-2.5-flash-preview-09-2025'},
+        'required_env': ['GOOGLE_API_KEY']
     },
     'gemini-2.5-flash-lite': {
         'class': ChatGoogleGenerativeAI,
-        'constructor_params': {'model': 'gemini-2.5-flash-lite'}
+        'constructor_params': {'model': 'gemini-2.5-flash-lite'},
+        'required_env': ['GOOGLE_API_KEY']
     }
 }

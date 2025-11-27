@@ -13,23 +13,19 @@ warnings.filterwarnings("ignore")
 
 def missing_model_env(model_choice: str):
     m = model_choice.lower()
+    config = _llm_config_map.get(m)
+    if not config:
+        return []
+
     missing = []
-    if m in ("gpt4o", "gpt-4.1"):
-        from .config import OPENAI_API_KEY
-        if not OPENAI_API_KEY:
-            missing.append("OPENAI_API_KEY")
-    elif m == "claude-3-5-sonnet-latest":
-        from .config import ANTHROPIC_API_KEY
-        if not ANTHROPIC_API_KEY:
-            missing.append("ANTHROPIC_API_KEY")
-    elif m in ("gemini-2.5-flash", "gemini-2.5-flash-preview-09-2025", "gemini-2.5-flash-lite"):
-        from .config import GOOGLE_API_KEY
-        if not GOOGLE_API_KEY:
-            missing.append("GOOGLE_API_KEY")
-    elif m == "llama3.1":
-        from .config import OLLAMA_BASE_URL
-        if not OLLAMA_BASE_URL:
-            missing.append("OLLAMA_BASE_URL")
+    for env_var in config.get('required_env', []):
+        # We need to check if the env var is set.
+        # Since we imported keys from .config, we can check those if they match,
+        # or we can check os.environ directly.
+        # Checking .config variables is safer as they are loaded via dotenv.
+        import os
+        if not os.getenv(env_var):
+             missing.append(env_var)
     return missing
 
 
@@ -197,11 +193,11 @@ def _chunk_text(text: str, max_chars: int = 3000, overlap: int = 200):
 def _extract_iocs(text: str):
     # Simple regexes for common IOCs; can be extended
     patterns = {
-        "emails": r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
-        "btc": r"\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b",
+        "emails": r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
+        "btc": r"\b(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}\b", # Improved BTC regex
         "eth": r"\b0x[a-fA-F0-9]{40}\b",
-        "domains": r"\b([a-z0-9-]+\.)+[a-z]{2,}\b",
-        "ipv4": r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
+        "domains": r"\b(?!-)[A-Za-z0-9-]{1,63}(?<!-)\.[A-Za-z]{2,6}\b", # Improved domain regex
+        "ipv4": r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b", # Improved IPv4 regex
     }
     out = {}
     import re as _re

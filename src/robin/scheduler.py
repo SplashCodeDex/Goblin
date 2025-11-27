@@ -72,7 +72,9 @@ def run_investigation(query_details: dict):
         logging.info(f"Created notification for scheduled query #{query_id}.")
 
     except Exception as e:
-        logging.error(f"Failed to run investigation for query #{query_id}: {e}", exc_info=True)
+        error_msg = f"Failed to run investigation for query #{query_id}: {e}"
+        logging.error(error_msg, exc_info=True)
+        create_notification(query_id, -1, error_msg) # Use -1 or null for run_id if failed before creation
 
 
 def check_and_run_due_queries():
