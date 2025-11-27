@@ -2,10 +2,18 @@ import base64
 import streamlit as st
 import streamlit_shadcn_ui as ui
 from datetime import datetime
-from scrape import scrape_multiple
-from search import get_search_results, is_tor_running
-from llm_utils import BufferedStreamingHandler
-from llm import get_llm, refine_query, filter_results, generate_summary_and_artifacts
+from robin.scrape import scrape_multiple
+from robin.search import get_search_results, is_tor_running
+from robin.llm_utils import BufferedStreamingHandler
+from robin.llm import get_llm, refine_query, filter_results, generate_summary_and_artifacts
+from robin.database import (
+    initialize_database, save_run, load_runs,
+    load_scheduled_queries, save_scheduled_query, delete_scheduled_query,
+    update_scheduled_query_status
+)
+
+# Initialize the database at the start of the script
+initialize_database()
 
 # Apply dark theme
 st.set_page_config(layout="wide", initial_sidebar_state="expanded", page_title="Robin: AI-Powered Dark Web OSINT Tool", page_icon="🕵️‍♂️")
@@ -25,10 +33,10 @@ def cached_scrape_multiple(filtered: list, threads: int, request_timeout: int, u
 # Sidebar
 with st.sidebar:
     import json, os
-    from search import get_tor_proxies
+    from robin.search import get_tor_proxies
     import requests
 
-    from llm import missing_model_env
+    from robin.llm import missing_model_env
 
     model_options = ["gpt4o", "gpt-4.1", "claude-3-5-sonnet-latest", "llama3.1", "gemini-2.5-flash", "gemini-2.5-flash-preview-09-2025", "gemini-2.5-flash-lite"]
     model = st.selectbox("Select LLM Model", options=model_options, index=0)
@@ -54,39 +62,29 @@ with st.sidebar:
 
     HISTORY_FILE = "history.jsonl"
 
-    def load_history(max_items: int = 20):
-        items = []
-        if os.path.exists(HISTORY_FILE):
-            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                for line in f:
-                    try:
-                        items.append(json.loads(line))
-                    except Exception:
-                        continue
-        items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-        return items[:max_items]
-
-    def save_history(entry: dict):
-        try:
-            with open(HISTORY_FILE, "a", encoding="utf-8") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except Exception as e:
-            st.warning(f"Failed to save history: {e}")
-
-    hist_items = load_history()
+    hist_items = load_runs()
     if hist_items:
-        labels = [f"{i['timestamp']} — {i['query'][:40]}" for i in hist_items]
-        picked = st.selectbox("Past Runs", options=labels, index=0)
+        # Format timestamp for display
+        for i in hist_items:
+            # Handle potential ISO format with 'Z' or microseconds
+            ts_str = i['timestamp'].replace("Z", "+00:00")
+            try:
+                i['display_ts'] = datetime.fromisoformat(ts_str).strftime('%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                i['display_ts'] = i['timestamp'] # fallback
+
+        labels = [f"{i['display_ts']} — {i['query'][:40]}" for i in hist_items]
+        picked = st.selectbox("Past Runs", options=labels, index=0, help="Load a previous investigation run from the database.")
         if picked:
             idx = labels.index(picked)
             chosen = hist_items[idx]
             if ui.button("Load Selected Run", key="load_history"):
                 st.session_state.query = chosen.get("query", "")
                 st.session_state.streamed_summary = chosen.get("summary", "")
-                st.session_state.refined = chosen.get("refined", "")
-                st.session_state.scraped = chosen.get("scraped", {})
+                st.session_state.refined = chosen.get("refined_query", "")
+                st.session_state.scraped = chosen.get("scraped_content", {})
                 st.session_state.results = chosen.get("results", [])
-                st.session_state.filtered = chosen.get("filtered", [])
+                st.session_state.filtered = chosen.get("filtered_results", [])
                 st.success("Loaded run into session. Switch to Summary/Sources tabs to view.")
     else:
         st.caption("No history yet. Run an investigation to save history.")
@@ -221,12 +219,12 @@ if run_button and query:
     # New: let the user select which results to scrape
     options = [f"{i+1}. {item['title'][:60]}" for i, item in enumerate(st.session_state.filtered)]
     idx_map = {f"{i+1}. {item['title'][:60]}": i for i, item in enumerate(st.session_state.filtered)}
-    
+
     with st.expander("Select results to scrape", expanded=True):
         import pandas as pd
         table_df = pd.DataFrame([{"title": item['title'], "url": item['link']} for item in st.session_state.filtered])
         st.dataframe(table_df, use_container_width=True, height=300 if compact_mode else 500)
-        selected = st.multiselect("Select result indices to scrape", options=list(range(len(table_df))), format_func=lambda i: table_df.iloc[i]["title"])        
+        selected = st.multiselect("Select result indices to scrape", options=list(range(len(table_df))), format_func=lambda i: table_df.iloc[i]["title"])
         prev_col, act_col = st.columns([1,1])
         with prev_col:
             preview_btn = st.button("Preview selected", key="preview_btn")
@@ -317,7 +315,7 @@ if run_button and query:
                     file_name=fname,
                     mime="text/markdown",
                 )
-            
+
         if chosen_tab == 'Sources':
             # Show scrape metadata table
             import pandas as pd, json
@@ -420,10 +418,9 @@ if run_button and query:
                     st.success(f"Alerts: {len(hits)} hits found")
                     st.dataframe(pd.DataFrame(hits))
 
-        # Persist run to history
+        # Persist run to history database
         try:
             from datetime import datetime as _dt
-            import json as _json
             entry = {
                 "timestamp": _dt.utcnow().isoformat() + "Z",
                 "query": query,
@@ -433,10 +430,10 @@ if run_button and query:
                 "scraped": st.session_state.get("scraped", {}),
                 "summary": st.session_state.get("streamed_summary", ""),
             }
-            with open("history.jsonl", "a", encoding="utf-8") as _hf:
-                _hf.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+            save_run(entry)
+            st.toast("Run saved to history database.", icon="💾")
         except Exception as e:
-            st.warning(f"Failed to save history: {e}")
+            st.warning(f"Failed to save history to database: {e}")
 
         stage_progress.progress(100, text="Done")
         status_slot.success("✔️ Pipeline completed successfully!")

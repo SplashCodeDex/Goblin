@@ -2,9 +2,9 @@ import click
 import subprocess
 from yaspin import yaspin
 from datetime import datetime
-from scrape import scrape_multiple
-from search import get_search_results, is_tor_running
-from llm import get_llm, refine_query, filter_results, generate_summary
+from robin.scrape import scrape_multiple
+from robin.search import get_search_results, is_tor_running
+from robin.llm import get_llm, refine_query, filter_results, generate_summary
 
 
 @click.group()
@@ -18,7 +18,7 @@ def robin():
 @click.option(
     "--model",
     "-m",
-    default="gpt4o",
+    default="gemini-2.5-flash",
     show_default=True,
     type=click.Choice(
         ["gpt4o", "gpt-4.1", "claude-3-5-sonnet-latest", "llama3.1", "gemini-2.5-flash", "gemini-2.5-flash-preview-09-2025", "gemini-2.5-flash-lite"]

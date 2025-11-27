@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/@streamlit/component-lib@1.5.0/dist/index.js"></script>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --fg: #e5e7eb;
+      --bd: #334155;
+      --shadow: 0 2px 10px rgba(0,0,0,0.25);
+      --radius: 12px;
+      --h: 42px;
+    }
+    body { margin: 0; padding: 0; background: transparent; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    .wrap {
+      position: relative; width: 100%; height: var(--h);
+    }
+    .input {
+      width: 100%; height: var(--h); box-sizing: border-box;
+      padding: 0 0.75rem; padding-right: 230px;
+      border-radius: var(--radius); border: 1px solid var(--bd);
+      background: var(--bg); color: var(--fg);
+      outline: none; box-shadow: var(--shadow);
+    }
+    .btn { position: absolute; top: 50%; transform: translateY(-50%);
+      height: 34px; border-radius: 10px; border: 1px solid var(--bd);
+      color: var(--fg); cursor: pointer; padding: 0 0.8rem;
+      background: linear-gradient(135deg, #1f2937 0%, #0f172a 100%);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+      transition: transform 120ms ease, box-shadow 200ms ease, background 300ms ease;
+    }
+    .btn:hover { transform: translateY(-50%) scale(1.02); box-shadow: 0 8px 22px rgba(0,0,0,0.45); }
+    .btn:active { transform: translateY(-50%); box-shadow: 0 2px 10px rgba(0,0,0,0.25); }
+    .btn.run { right: 10px; background: linear-gradient(135deg, #16a34a 0%, #065f46 100%); border-color: #064e3b; }
+    .btn.playbook { right: 110px; }
+    .label { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); opacity: 0.45; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <input id="inp" class="input" placeholder="Enter Dark Web Query" />
+    <button id="playbook" class="btn playbook">Playbook</button>
+    <button id="run" class="btn run">Run</button>
+  </div>
+  <script>
+    const state = { text: "", run: false };
+
+    function send(value) {
+      Streamlit.setComponentValue(value);
+    }
+
+    function pickRandom(list) { return list[Math.floor(Math.random() * list.length)] }
+
+    function onRender(event) {
+      const { args, disabled } = event.detail;
+      const inp = document.getElementById('inp');
+      if (args && typeof args.value === 'string' && inp.value !== args.value) {
+        inp.value = args.value;
+        state.text = args.value;
+      }
+      // focus behavior optional
+      Streamlit.setFrameHeight(document.body.scrollHeight);
+      // Attach handlers once
+      if (!onRender._attached) {
+        document.getElementById('playbook').addEventListener('click', () => {
+          const prompts = (args && Array.isArray(args.prompts)) ? args.prompts : [];
+          if (prompts.length > 0) {
+            const pick = pickRandom(prompts);
+            state.text = pick;
+            inp.value = pick;
+            send({ text: state.text, run: false, action: 'playbook' });
+          }
+        });
+        document.getElementById('run').addEventListener('click', () => {
+          send({ text: state.text || inp.value || '', run: true, action: 'run' });
+        });
+        inp.addEventListener('input', () => {
+          state.text = inp.value;
+          // debounce-ish updates
+          clearTimeout(onRender._t); onRender._t = setTimeout(() => send({ text: state.text, run: false, action: 'typing' }), 150);
+        });
+        onRender._attached = true;
+      }
+    }
+    Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender);
+    Streamlit.setComponentReady();
+    Streamlit.setFrameHeight(document.body.scrollHeight);
+  </script>
+</body>
+</html>

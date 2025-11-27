@@ -9,7 +9,7 @@ langchain-openai
 langchain-ollama
 langchain-anthropic
 langchain_community
-langchain_google_genai
+langchain-google-genai
 pandas
 streamlit-shadcn-ui
 langdetect
@@ -17,3 +17,8 @@ googletrans==4.0.0-rc1
 pdfplumber
 pytesseract
 Pillow
+schedule
+croniter
+fastapi
+uvicorn
+sse-starlette
