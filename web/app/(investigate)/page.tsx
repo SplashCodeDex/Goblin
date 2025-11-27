@@ -99,8 +99,25 @@ export default function InvestigatePage() {
   async function onSearch() {
     try {
       setSearchInProgress(true)
+
+      // Clear previous investigation state
+      setScrapeState({ inProgress: false, percent: 0, sources: [] })
+      setSummaryText("")
+      setArtifacts([])
+      setStix({})
+      setMisp({})
+      setFilteredRes([])
+      setSelectedMap({})
+
       const r = await search(query, threads, maxResults, requestTimeout, useCache, loadCachedOnly)
       setResults(r.results)
+      setFilteredRes(r.results)
+
+      // Select all by default
+      const m: Record<string, boolean> = {}
+      r.results.forEach((item: any) => { m[item.link] = true })
+      setSelectedMap(m)
+
       toast({ description: "Search done" })
 
       // Check health/model status in background
@@ -176,13 +193,27 @@ export default function InvestigatePage() {
   function onLoadHistory(run: any) {
     setQuery(run.query)
     setResults(run.results || [])
+
+    // Restore filtered results and selection
+    setFilteredRes(run.results || [])
+    const m: Record<string, boolean> = {}
+    if (run.results) {
+      run.results.forEach((item: any) => { m[item.link] = true })
+    }
+    setSelectedMap(m)
+
     if (run.scraped && Object.keys(run.scraped).length > 0) {
       const sources = Object.entries(run.scraped).map(([url, excerpt]) => ({ url, excerpt: String(excerpt) }))
       setScrapeState({ inProgress: false, percent: 100, sources })
+    } else {
+      setScrapeState({ inProgress: false, percent: 0, sources: [] })
     }
+
     setSummaryText(run.summary || "")
     if (run.artifacts) {
       setArtifacts(Object.entries(run.artifacts).flatMap(([k, v]) => (v as any[]).map(val => ({ type: k, value: val }))))
+    } else {
+      setArtifacts([])
     }
     toast({ description: "History loaded" })
   }
@@ -206,20 +237,22 @@ export default function InvestigatePage() {
       </div>
 
       {/* Inline warnings */}
-      {(!status.torReady || !status.modelReady) && (
-        <div className="grid gap-2">
-          {!status.torReady && (
-            <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 text-yellow-200 px-3 py-2 text-sm">
-              Tor SOCKS proxy not detected. Searches may return empty.
-            </div>
-          )}
-          {!status.modelReady && (
-            <div className="rounded-md border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2 text-sm">
-              Missing model configuration: {status.missing.join(", ")}
-            </div>
-          )}
-        </div>
-      )}
+      {
+        (!status.torReady || !status.modelReady) && (
+          <div className="grid gap-2">
+            {!status.torReady && (
+              <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 text-yellow-200 px-3 py-2 text-sm">
+                Tor SOCKS proxy not detected. Searches may return empty.
+              </div>
+            )}
+            {!status.modelReady && (
+              <div className="rounded-md border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2 text-sm">
+                Missing model configuration: {status.missing.join(", ")}
+              </div>
+            )}
+          </div>
+        )
+      }
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Sidebar: Controls */}
@@ -321,6 +354,6 @@ export default function InvestigatePage() {
         translate={translate}
         setTranslate={setTranslate}
       />
-    </div>
+    </div >
   )
 }
