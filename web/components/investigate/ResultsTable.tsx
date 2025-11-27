@@ -4,9 +4,10 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { ExternalLink, Eye } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { SearchResult } from "@/lib/api"
 
 export function ResultsTable(props: {
-    data: any[]
+    data: SearchResult[]
     selectedMap: Record<string, boolean>
     setSelectedMap: (m: Record<string, boolean>) => void
 }) {

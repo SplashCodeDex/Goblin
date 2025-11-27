@@ -2,12 +2,13 @@
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts'
 import { Card } from "@/components/ui/card"
+import { Artifact, ScrapedSource } from "@/lib/api"
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d']
 
-export function OverviewCharts({ artifacts, sources }: { artifacts: any[], sources: any[] }) {
+export function OverviewCharts({ artifacts, sources }: { artifacts: Artifact[], sources: ScrapedSource[] }) {
     // Process artifacts data
-    const artifactCounts = artifacts.reduce((acc: any, curr: any) => {
+    const artifactCounts = artifacts.reduce((acc: Record<string, number>, curr: Artifact) => {
         acc[curr.type] = (acc[curr.type] || 0) + 1
         return acc
     }, {})
@@ -15,7 +16,7 @@ export function OverviewCharts({ artifacts, sources }: { artifacts: any[], sourc
     const artifactData = Object.entries(artifactCounts).map(([name, value]) => ({ name, value }))
 
     // Process sources data (top domains)
-    const domainCounts = sources.reduce((acc: any, curr: any) => {
+    const domainCounts = sources.reduce((acc: Record<string, number>, curr: ScrapedSource) => {
         try {
             const domain = new URL(curr.url).hostname
             acc[domain] = (acc[domain] || 0) + 1
@@ -25,7 +26,7 @@ export function OverviewCharts({ artifacts, sources }: { artifacts: any[], sourc
 
     const sourceData = Object.entries(domainCounts)
         .map(([name, value]) => ({ name, value }))
-        .sort((a: any, b: any) => b.value - a.value)
+        .sort((a, b) => b.value - a.value)
         .slice(0, 5)
 
     if (artifactData.length === 0 && sourceData.length === 0) return null

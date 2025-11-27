@@ -20,7 +20,7 @@ import { ArtifactsTable } from "@/components/investigate/ArtifactsTable"
 import { ResultsTable } from "@/components/investigate/ResultsTable"
 import { OverviewCharts } from "@/components/investigate/OverviewCharts"
 
-import { refine, search, filter, scrape, summary, health, scrapeOne, modelStatus } from "@/lib/api"
+import { refine, search, filter, scrape, summary, health, scrapeOne, modelStatus, SearchResult, Artifact, HistoryRun, ScrapedSource } from "@/lib/api"
 
 export default function InvestigatePage() {
   const { toast } = useToast()
@@ -49,11 +49,11 @@ export default function InvestigatePage() {
 
   const [query, setQuery] = useState("")
 
-  const [results, setResults] = useState<any[]>([])
-  const [filteredRes, setFilteredRes] = useState<any[]>([])
-  const [scrapeState, setScrapeState] = useState({ inProgress: false, percent: 0, sources: [] as { url: string; excerpt: string }[] })
+  const [results, setResults] = useState<SearchResult[]>([])
+  const [filteredRes, setFilteredRes] = useState<SearchResult[]>([])
+  const [scrapeState, setScrapeState] = useState({ inProgress: false, percent: 0, sources: [] as ScrapedSource[] })
   const [summaryText, setSummaryText] = useState("")
-  const [artifacts, setArtifacts] = useState<any[]>([])
+  const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [stix, setStix] = useState<any>({})
   const [misp, setMisp] = useState<any>({})
   const [status, setStatus] = useState({ torReady: false, modelReady: true, missing: [] as string[] })
@@ -117,7 +117,7 @@ export default function InvestigatePage() {
 
       // Select all by default
       const m: Record<string, boolean> = {}
-      r.results.forEach((item: any) => { m[item.link] = true })
+      r.results.forEach((item: SearchResult) => { m[item.link] = true })
       setSelectedMap(m)
 
       toast({ description: "Search done" })
@@ -142,7 +142,7 @@ export default function InvestigatePage() {
       setFilteredRes(r.filtered)
       // initialize selection: select all
       const m: Record<string, boolean> = {}
-      r.filtered.forEach((item: any) => { m[item.link] = true })
+      r.filtered.forEach((item: SearchResult) => { m[item.link] = true })
       setSelectedMap(m)
       toast({ description: "Filtered" })
     } catch (e: any) {
@@ -153,11 +153,11 @@ export default function InvestigatePage() {
   async function onScrape() {
     try {
       setScrapeState(s => ({ ...s, inProgress: true, percent: 0 }))
-      const selectedTargets = filteredRes.filter((it: any) => selectedMap[it.link])
+      const selectedTargets = filteredRes.filter((it: SearchResult) => selectedMap[it.link])
       const targets = selectedTargets.slice(0, maxResults)
       if (detailed) {
         // Streaming summary: cache scraped first, then stream
-        const list = targets.map((t: any) => ({ url: t.link as string, status: 'queued' }))
+        const list = targets.map((t: SearchResult) => ({ url: t.link as string, status: 'queued' }))
         setPerUrl(list)
         const scraped: Record<string, string> = {}
         for (let i = 0; i < targets.length; i++) {
@@ -192,7 +192,7 @@ export default function InvestigatePage() {
     }
   }
 
-  function onLoadHistory(run: any) {
+  function onLoadHistory(run: HistoryRun) {
     setQuery(run.query)
     setResults(run.results || [])
 
@@ -200,7 +200,7 @@ export default function InvestigatePage() {
     setFilteredRes(run.results || [])
     const m: Record<string, boolean> = {}
     if (run.results) {
-      run.results.forEach((item: any) => { m[item.link] = true })
+      run.results.forEach((item: SearchResult) => { m[item.link] = true })
     }
     setSelectedMap(m)
 
