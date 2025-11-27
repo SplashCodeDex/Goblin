@@ -52,6 +52,42 @@ def get_tor_session():
     }
     return session
 
+def renew_tor_identity(control_port=TOR_CONTROL_PORT, password=None):
+    """
+    Sends a NEWNYM signal to the Tor control port to request a new identity.
+    """
+    try:
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect(('127.0.0.1', control_port))
+            if password:
+                s.sendall(f'AUTHENTICATE "{password}"\r\n'.encode())
+            else:
+                s.sendall(b'AUTHENTICATE ""\r\n')
+            resp = s.recv(1024).decode()
+            if '250' not in resp:
+                logger.warning(f"Tor authentication failed: {resp.strip()}")
+                return
+
+            s.sendall(b'SIGNAL NEWNYM\r\n')
+            resp = s.recv(1024).decode()
+            if '250' not in resp:
+                logger.warning(f"Tor NEWNYM failed: {resp.strip()}")
+            else:
+                logger.info("Tor identity rotated successfully.")
+                time.sleep(1) # Give Tor a moment to build new circuits
+    except Exception as e:
+        logger.error(f"Failed to rotate Tor identity: {e}")
+
+def _check_rotate(rotate_interval=5):
+    global request_counter
+    with counter_lock:
+        request_counter += 1
+        if request_counter >= rotate_interval:
+            request_counter = 0
+            return True
+    return False
+
 def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=TOR_CONTROL_PORT, control_password=None, request_timeout=45, translate_non_english=True, offline_only=False):
     """
     Scrapes a single URL.
@@ -68,6 +104,9 @@ def scrape_single(url_data, rotate=False, rotate_interval=5, control_port=TOR_CO
 
     try:
         if use_tor:
+            if rotate and _check_rotate(rotate_interval):
+                renew_tor_identity(control_port=control_port, password=control_password)
+
             session = get_tor_session()
             response = session.get(url, headers=headers, timeout=request_timeout)
         else:
@@ -181,7 +220,7 @@ def scrape_multiple(urls_data, max_workers=5, request_timeout=30, use_cache=True
     if to_fetch:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_url = {
-                executor.submit(scrape_single, url_data, False, 5, TOR_CONTROL_PORT, None, request_timeout, translate_non_english): url_data
+                executor.submit(scrape_single, url_data, True, 5, TOR_CONTROL_PORT, None, request_timeout, translate_non_english): url_data
                 for url_data in to_fetch
             }
             for future in as_completed(future_to_url):

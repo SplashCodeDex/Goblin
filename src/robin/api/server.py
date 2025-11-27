@@ -19,6 +19,15 @@ from datetime import datetime
 
 app = FastAPI(title="Robin API", version="1.0.0")
 
+@app.on_event("startup")
+async def startup_event():
+    from robin.database import initialize_database
+    try:
+        initialize_database()
+        logger.info("Database initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+
 # Simple in-memory cache for streaming summary
 _SUMMARY_CACHE: Dict[str, Dict[str, str]] = {}
 
@@ -244,8 +253,11 @@ async def api_summary_stream(model: str, query: str, id: str):
     llm = get_llm(model)
 
     async def event_generator():
-        # For now, use the non-streaming generate_summary and chunk lines
-        text = generate_summary(llm, query, scraped)
+        # Offload synchronous LLM task to thread pool to avoid blocking the event loop
+        import asyncio
+        loop = asyncio.get_running_loop()
+        text = await loop.run_in_executor(None, generate_summary, llm, query, scraped)
+
         for line in text.splitlines(True):
             yield {"event": "message", "data": line}
             await asyncio.sleep(0)

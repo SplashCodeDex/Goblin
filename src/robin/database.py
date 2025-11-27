@@ -12,6 +12,7 @@ DB_FILE = os.path.join(_project_root, "data", "robin.db")
 def get_db_connection():
     """Establishes a connection to the SQLite database."""
     conn = sqlite3.connect(DB_FILE)
+    conn.execute("PRAGMA journal_mode=WAL;")
     conn.row_factory = sqlite3.Row
     return conn
 
