@@ -189,12 +189,16 @@ export default function InvestigatePage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-6 space-y-6 max-w-[1600px]">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Investigation Dashboard</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold tracking-tight">Investigation Dashboard</h1>
+          <div className="flex gap-2">
+            <Badge variant={status.torReady ? "default" : "destructive"} className="h-6">Tor {status.torReady ? "Ready" : "Not Ready"}</Badge>
+            <Badge variant={status.modelReady ? "default" : "destructive"} className="h-6">Model {status.modelReady ? "Ready" : "Missing"}</Badge>
+          </div>
+        </div>
         <div className="flex gap-2 items-center">
-          <Badge variant={status.torReady ? "default" : "destructive"}>Tor {status.torReady ? "Ready" : "Not Ready"}</Badge>
-          <Badge variant={status.modelReady ? "default" : "destructive"}>Model {status.modelReady ? "Ready" : `Missing: ${status.missing.join(', ')}`}</Badge>
           <HistoryDialog onLoad={onLoadHistory} />
           <Button variant="ghost" size="icon" onClick={() => setSettingsOpen(true)}>
             <Settings className="h-4 w-4" />
@@ -202,85 +206,102 @@ export default function InvestigatePage() {
         </div>
       </div>
 
-      {/* Inline warnings to mirror Streamlit banners */}
-      {!status.torReady && (
-        <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 text-yellow-200 px-3 py-2 text-sm mb-3">
-          Tor SOCKS proxy not detected. Searches may return empty.
-        </div>
-      )}
-      {!status.modelReady && (
-        <div className="rounded-md border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2 text-sm mb-3">
-          Missing model configuration: {status.missing.join(", ")}
-        </div>
-      )}
-
-      <Card className="p-4 space-y-4">
-        <SearchForm model={model} setModel={setModel} query={query} setQuery={setQuery} onRefine={onRefine} refined={refinedText} />
-        <Playbooks onSelect={(q) => { setQuery(q); toast({ description: "Playbook loaded" }) }} />
-        <Watchlist keywords={keywords} setKeywords={setKeywords} hits={hits} />
-      </Card>
-
-      <Card className="p-4">
-        <ProgressSteps
-          refined={!!refinedText}
-          resultsCount={results.length}
-          filteredCount={filteredRes.length}
-          scraping={{ inProgress: scrapeState.inProgress, percent: scrapeState.percent }}
-          hasSummary={!!summaryText}
-          onSearch={onSearch}
-          onFilter={onFilter}
-          onScrape={onScrape}
-        />
-      </Card>
-
-      <Tabs defaultValue="overview" className="space-y-4">
-        {detailed && perUrl.length > 0 && (
-          <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-3">
-            <div className="text-sm font-medium mb-2">Per-URL progress</div>
-            <div className="grid gap-2 text-sm">
-              {perUrl.map(item => (
-                <div key={item.url} className="flex items-center justify-between">
-                  <span className="truncate max-w-[70%]">{item.url}</span>
-                  <span className="text-zinc-400">{item.status}</span>
-                </div>
-              ))}
+      {/* Inline warnings */}
+      {(!status.torReady || !status.modelReady) && (
+        <div className="grid gap-2">
+          {!status.torReady && (
+            <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 text-yellow-200 px-3 py-2 text-sm">
+              Tor SOCKS proxy not detected. Searches may return empty.
             </div>
-          </div>
-        )}
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="results">Results ({filteredRes.length})</TabsTrigger>
-          <TabsTrigger value="sources">Sources ({scrapeState.sources.length})</TabsTrigger>
-          <TabsTrigger value="artifacts">Artifacts ({artifacts.length})</TabsTrigger>
-        </TabsList>
-        <Separator className="opacity-50" />
-        <TabsContent value="overview">
-          <SummaryCard refined={refinedText} summary={summaryText} />
-        </TabsContent>
-        <TabsContent value="results">
-          <ResultsTable data={filteredRes} selectedMap={selectedMap} setSelectedMap={setSelectedMap} />
-        </TabsContent>
-        <TabsContent value="sources">
-          <SourcesTable data={scrapeState.sources} />
-        </TabsContent>
-        <TabsContent value="artifacts">
-          <ArtifactsTable data={artifacts} />
-        </TabsContent>
-      </Tabs>
-
-      {/* Exports below summary */}
-      {scrapeState.sources.length > 0 && (
-        <div className="flex flex-wrap gap-3">
-          <Button variant="secondary" onClick={() => downloadCSV(scrapeState.sources)}>Download sources (CSV)</Button>
-          <Button variant="secondary" onClick={() => downloadJSON(scrapeState.sources)}>Download sources (JSON)</Button>
-          {stix && Object.keys(stix).length > 0 && (
-            <Button variant="secondary" onClick={() => downloadJSON(stix)}>Download STIX 2.1</Button>
           )}
-          {misp && Object.keys(misp).length > 0 && (
-            <Button variant="secondary" onClick={() => downloadJSON(misp)}>Download MISP Event</Button>
+          {!status.modelReady && (
+            <div className="rounded-md border border-red-500/30 bg-red-500/10 text-red-200 px-3 py-2 text-sm">
+              Missing model configuration: {status.missing.join(", ")}
+            </div>
           )}
         </div>
       )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Sidebar: Controls */}
+        <div className="col-span-12 lg:col-span-3 space-y-6">
+          <Card className="p-5 space-y-6 border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4">Control Center</h2>
+              <SearchForm model={model} setModel={setModel} query={query} setQuery={setQuery} onRefine={onRefine} refined={refinedText} />
+            </div>
+            <Separator className="bg-zinc-800" />
+            <Playbooks onSelect={(q) => { setQuery(q); toast({ description: "Playbook loaded" }) }} />
+            <Separator className="bg-zinc-800" />
+            <Watchlist keywords={keywords} setKeywords={setKeywords} hits={hits} />
+          </Card>
+        </div>
+
+        {/* Main Content: Pipeline & Results */}
+        <div className="col-span-12 lg:col-span-9 space-y-6">
+          <Card className="p-5 border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
+            <ProgressSteps
+              refined={!!refinedText}
+              resultsCount={results.length}
+              filteredCount={filteredRes.length}
+              scraping={{ inProgress: scrapeState.inProgress, percent: scrapeState.percent }}
+              hasSummary={!!summaryText}
+              onSearch={onSearch}
+              onFilter={onFilter}
+              onScrape={onScrape}
+            />
+          </Card>
+
+          <Tabs defaultValue="overview" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <TabsList className="bg-zinc-900/50 border border-zinc-800">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="results">Results ({filteredRes.length})</TabsTrigger>
+                <TabsTrigger value="sources">Sources ({scrapeState.sources.length})</TabsTrigger>
+                <TabsTrigger value="artifacts">Artifacts ({artifacts.length})</TabsTrigger>
+              </TabsList>
+
+              {/* Exports Toolbar */}
+              {scrapeState.sources.length > 0 && (
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => downloadCSV(scrapeState.sources)}>CSV</Button>
+                  <Button variant="outline" size="sm" onClick={() => downloadJSON(scrapeState.sources)}>JSON</Button>
+                  {stix && Object.keys(stix).length > 0 && (
+                    <Button variant="outline" size="sm" onClick={() => downloadJSON(stix)}>STIX</Button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {detailed && perUrl.length > 0 && (
+              <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-3">
+                <div className="text-sm font-medium mb-2">Per-URL progress</div>
+                <div className="grid gap-2 text-sm max-h-40 overflow-y-auto">
+                  {perUrl.map(item => (
+                    <div key={item.url} className="flex items-center justify-between">
+                      <span className="truncate max-w-[70%] text-zinc-400">{item.url}</span>
+                      <span className={item.status === 'done' ? "text-green-400" : "text-zinc-500"}>{item.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <TabsContent value="overview" className="mt-0">
+              <SummaryCard refined={refinedText} summary={summaryText} />
+            </TabsContent>
+            <TabsContent value="results" className="mt-0">
+              <ResultsTable data={filteredRes} selectedMap={selectedMap} setSelectedMap={setSelectedMap} />
+            </TabsContent>
+            <TabsContent value="sources" className="mt-0">
+              <SourcesTable data={scrapeState.sources} />
+            </TabsContent>
+            <TabsContent value="artifacts" className="mt-0">
+              <ArtifactsTable data={artifacts} />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
 
       <AdvancedSettingsDialog
         open={settingsOpen}
