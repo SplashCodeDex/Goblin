@@ -20,6 +20,12 @@ export function AdvancedSettingsDialog(props: {
   setLoadCachedOnly: (v: boolean) => void
   translate: boolean
   setTranslate: (v: boolean) => void
+  minStars: number
+  setMinStars: (n: number) => void
+  minForks: number
+  setMinForks: (n: number) => void
+  includeCommits: boolean
+  setIncludeCommits: (v: boolean) => void
 }) {
   const {
     open, onClose, threads, setThreads, maxResults, setMaxResults, detailed, setDetailed,
@@ -59,6 +65,23 @@ export function AdvancedSettingsDialog(props: {
           <div className="flex items-center gap-2">
             <input id="detailed" type="checkbox" checked={!!detailed} onChange={e => setDetailed?.(e.target.checked)} />
             <label htmlFor="detailed" className="text-sm">Detailed per-URL progress (sequential)</label>
+          </div>
+          <div className="grid gap-2">
+            <label className="text-sm font-semibold">GitHub Filters</label>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs">Min Stars</label>
+                <Input type="number" min={0} value={props.minStars} onChange={e => props.setMinStars(Number(e.target.value))} />
+              </div>
+              <div>
+                <label className="text-xs">Min Forks</label>
+                <Input type="number" min={0} value={props.minForks} onChange={e => props.setMinForks(Number(e.target.value))} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <input id="includeCommits" type="checkbox" checked={props.includeCommits} onChange={e => props.setIncludeCommits(e.target.checked)} />
+              <label htmlFor="includeCommits" className="text-sm">Search Commit History (Secrets)</label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={onClose}>Close</Button>

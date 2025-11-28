@@ -82,6 +82,69 @@ async def api_refine(req: RefineReq):
 class SearchReq(BaseModel):
     refined: str
     results: List[Dict[str, Any]]
+    sources: List[str] = ["darkweb", "github"]
+    max_results: int = 50
+    min_stars: int = 0
+    min_forks: int = 0
+
+
+@app.post("/api/search")
+async def api_search(req: SearchReq):
+    import asyncio
+    results = []
+
+    # Dark Web Search
+    if "darkweb" in req.sources:
+        dw_results = await asyncio.get_running_loop().run_in_executor(
+            None,
+            get_search_results,
+            req.refined,
+            req.max_results
+        )
+        results.extend(dw_results)
+
+    # GitHub Search
+    if "github" in req.sources:
+        from robin.github_search import search_github
+        gh_results = await asyncio.get_running_loop().run_in_executor(
+            None,
+            search_github,
+            req.refined,
+            req.max_results,
+            req.min_stars,
+            req.min_forks
+        )
+        results.extend(gh_results)
+
+    # GitHub Code Search
+    if "github_code" in req.sources:
+        from robin.github_search import search_github_code
+        gh_code_results = await asyncio.get_running_loop().run_in_executor(
+            None,
+            search_github_code,
+            req.refined,
+            req.max_results
+        )
+        results.extend(gh_code_results)
+
+    # GitHub Commit Search
+    if "github_commits" in req.sources:
+        from robin.github_search import search_github_commits
+        gh_commit_results = await asyncio.get_running_loop().run_in_executor(
+            None,
+            search_github_commits,
+            req.refined,
+            req.max_results
+        )
+        results.extend(gh_commit_results)
+
+    return {"results": results}
+
+
+class FilterReq(BaseModel):
+    model: str
+    refined: str
+    results: List[Dict[str, Any]]
 
 
 class FilterResp(BaseModel):
@@ -92,6 +155,25 @@ class FilterResp(BaseModel):
 async def api_filter(req: FilterReq):
     missing = missing_model_env(req.model)
     if missing:
+        raise HTTPException(status_code=400, detail=f"Missing env: {', '.join(missing)}")
+    llm = get_llm(req.model)
+    filtered = filter_results(llm, req.refined, req.results)
+    return {"filtered": filtered}
+
+
+class ScrapeReq(BaseModel):
+    filtered: List[Dict[str, Any]]
+    threads: int = 5
+    request_timeout: int = 30
+    use_cache: bool = True
+    load_cached_only: bool = False
+    translate_non_english: bool = True
+
+
+class ScrapeResp(BaseModel):
+    scraped: Dict[str, str]
+
+
 @app.post("/api/scrape", response_model=ScrapeResp)
 async def api_scrape(req: ScrapeReq):
     scraped = scrape_multiple(

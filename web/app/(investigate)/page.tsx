@@ -38,6 +38,9 @@ export default function InvestigationPage() {
   const [threads, setThreads] = useState(5)
   const [maxResults, setMaxResults] = useState(200)
   const [detailed, setDetailed] = useState(false)
+  const [minStars, setMinStars] = useState(0)
+  const [minForks, setMinForks] = useState(0)
+  const [includeCommits, setIncludeCommits] = useState(false)
   const [requestTimeout, setRequestTimeout] = useState(30)
   const [useCache, setUseCache] = useState(true)
   const [loadCachedOnly, setLoadCachedOnly] = useState(false)
@@ -78,7 +81,12 @@ export default function InvestigationPage() {
     try {
       setSearchInProgress(true)
 
+      const sources = ["darkweb", "github", "github_code"]
+      if (includeCommits) sources.push("github_commits")
 
+      const res = await search(query, threads, maxResults, requestTimeout, useCache, loadCachedOnly, sources, minStars, minForks)
+      setResults(res.results)
+      setFilteredRes(res.results)
       toast({ description: "Search done" })
 
       // Check health/model status in background
@@ -92,20 +100,6 @@ export default function InvestigationPage() {
       toast({ description: e?.message || "Search failed", variant: "destructive" })
     } finally {
       setSearchInProgress(false)
-    }
-  }
-
-  async function onFilter() {
-    try {
-      const r = await filter(model, query, results)
-      setFilteredRes(r.filtered)
-      // initialize selection: select all
-      const m: Record<string, boolean> = {}
-      r.filtered.forEach((item: SearchResult) => { m[item.link] = true })
-      setSelectedMap(m)
-      toast({ description: "Filtered" })
-    } catch (e: any) {
-      toast({ description: e?.message || "Filter failed", variant: "destructive" })
     }
   }
 
@@ -323,6 +317,12 @@ ${artifacts.map(a => `- ${a.type}: ${a.value}`).join("\n")}
         setLoadCachedOnly={setLoadCachedOnly}
         translate={translate}
         setTranslate={setTranslate}
+        minStars={minStars}
+        setMinStars={setMinStars}
+        minForks={minForks}
+        setMinForks={setMinForks}
+        includeCommits={includeCommits}
+        setIncludeCommits={setIncludeCommits}
       />
     </div>
   )

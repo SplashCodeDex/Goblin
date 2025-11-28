@@ -55,6 +55,15 @@ export function ResultsTable(props: {
                             </TableCell>
                             <TableCell className="max-w-[400px] truncate text-zinc-400" title={item.snippet}>
                                 {item.snippet}
+                                {item.emails && item.emails.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                        {item.emails.map(email => (
+                                            <span key={email} className="inline-flex items-center rounded-md border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs font-medium text-zinc-400">
+                                                {email}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                             </TableCell>
                             <TableCell>
                                 <div className="flex gap-2">
