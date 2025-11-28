@@ -23,5 +23,7 @@ SEARCH_ENGINE_ENDPOINTS = [
     "http://xmh57jrzrnw6insl.onion/4a1f6b371c/search.cgi?s={query}"
 ]
 
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", None)
+
 # Scraping configuration
 MAX_SCRAPE_CHARS = int(os.getenv("MAX_SCRAPE_CHARS", "1200"))

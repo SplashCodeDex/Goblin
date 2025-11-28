@@ -23,48 +23,15 @@ import { OverviewCharts } from "@/components/investigate/OverviewCharts"
 a.href = url
 a.download = "sources.json"
 a.click()
-  }
-
-const [query, setQuery] = useState("")
-
-const [results, setResults] = useState<SearchResult[]>([])
-const [filteredRes, setFilteredRes] = useState<SearchResult[]>([])
-const [scrapeState, setScrapeState] = useState({ inProgress: false, percent: 0, sources: [] as ScrapedSource[] })
-const [summaryText, setSummaryText] = useState("")
-const [artifacts, setArtifacts] = useState<Artifact[]>([])
-const [stix, setStix] = useState<any>({})
-const [misp, setMisp] = useState<any>({})
-const [status, setStatus] = useState({ torReady: false, modelReady: true, missing: [] as string[] })
-const [settingsOpen, setSettingsOpen] = useState(false)
-const [threads, setThreads] = useState(5)
-const [maxResults, setMaxResults] = useState(200)
-const [detailed, setDetailed] = useState(false)
-const [requestTimeout, setRequestTimeout] = useState(30)
-const [useCache, setUseCache] = useState(true)
-const [loadCachedOnly, setLoadCachedOnly] = useState(false)
-const [translate, setTranslate] = useState(true)
-const [perUrl, setPerUrl] = useState<{ url: string; status: string }[]>([])
-const [selectedMap, setSelectedMap] = useState<Record<string, boolean>>({})
-const [keywords, setKeywords] = useState<string[]>([])
-const [hits, setHits] = useState<{ keyword: string; url: string }[]>([])
-
-const [searchInProgress, setSearchInProgress] = useState(false)
-
-// Watchlist logic
-useEffect(() => {
-  if (scrapeState.sources.length === 0 || keywords.length === 0) {
-    setHits([])
-    return
-  }
-  const newHits: { keyword: string; url: string }[] = []
-  scrapeState.sources.forEach(s => {
-    keywords.forEach(k => {
-      if (s.excerpt.toLowerCase().includes(k.toLowerCase())) {
-        newHits.push({ keyword: k, url: s.url })
-      }
-    })
+const newHits: { keyword: string; url: string }[] = []
+scrapeState.sources.forEach(s => {
+  keywords.forEach(k => {
+    if (s.excerpt.toLowerCase().includes(k.toLowerCase())) {
+      newHits.push({ keyword: k, url: s.url })
+    }
   })
-  setHits(newHits)
+})
+setHits(newHits)
 }, [scrapeState.sources, keywords])
 
 async function checkHealth() {
@@ -80,23 +47,6 @@ async function onSearch() {
   try {
     setSearchInProgress(true)
 
-    // Clear previous investigation state
-    setScrapeState({ inProgress: false, percent: 0, sources: [] })
-    setSummaryText("")
-    setArtifacts([])
-    setStix({})
-    setMisp({})
-    setFilteredRes([])
-    setSelectedMap({})
-
-    const r = await search(query, threads, maxResults, requestTimeout, useCache, loadCachedOnly)
-    setResults(r.results)
-    setFilteredRes(r.results)
-
-    // Select all by default
-    const m: Record<string, boolean> = {}
-    r.results.forEach((item: SearchResult) => { m[item.link] = true })
-    setSelectedMap(m)
 
     toast({ description: "Search done" })
 
@@ -146,21 +96,6 @@ async function onScrape() {
         setPerUrl(prev => prev.map(x => x.url === t.link ? { ...x, status: 'done' } : x))
         setScrapeState(s => ({ ...s, percent: Math.round((i + 1) / targets.length * 100) }))
       }
-      const sources = Object.entries(scraped).map(([url, excerpt]) => ({ url, excerpt: String(excerpt) }))
-      setScrapeState({ inProgress: false, percent: 100, sources })
-      const s = await summary(model, query, scraped)
-      setSummaryText(s.summary)
-      setArtifacts(Object.entries(s.artifacts || {}).flatMap(([k, v]) => (v as any[]).map(val => ({ type: k, value: val }))))
-      setStix(s.stix)
-      setMisp(s.misp)
-    } else {
-      const r = await scrape(targets, threads, requestTimeout, useCache, loadCachedOnly, translate)
-      const sources = Object.entries(r.scraped).map(([url, excerpt]) => ({ url, excerpt: String(excerpt) }))
-      setScrapeState({ inProgress: false, percent: 100, sources })
-      const s = await summary(model, query, r.scraped)
-      setSummaryText(s.summary)
-      setArtifacts(Object.entries(s.artifacts || {}).flatMap(([k, v]) => (v as any[]).map(val => ({ type: k, value: val }))))
-      setStix(s.stix)
       setMisp(s.misp)
     }
     toast({ description: "Summary ready" })
