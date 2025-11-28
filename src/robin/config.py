@@ -27,3 +27,44 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", None)
 
 # Scraping configuration
 MAX_SCRAPE_CHARS = int(os.getenv("MAX_SCRAPE_CHARS", "1200"))
+
+def get_config():
+    """Returns the current configuration, masking sensitive values."""
+    return {
+        "OPENAI_API_KEY": _mask(OPENAI_API_KEY),
+        "GOOGLE_API_KEY": _mask(GOOGLE_API_KEY),
+        "ANTHROPIC_API_KEY": _mask(ANTHROPIC_API_KEY),
+        "OLLAMA_BASE_URL": OLLAMA_BASE_URL,
+        "GITHUB_TOKEN": _mask(GITHUB_TOKEN),
+        "TOR_SOCKS_HOST": TOR_SOCKS_HOST,
+        "TOR_SOCKS_PORT": TOR_SOCKS_PORT,
+        "TOR_CONTROL_PORT": TOR_CONTROL_PORT,
+        "TOR_PASSWORD": _mask(TOR_PASSWORD),
+        "MAX_SCRAPE_CHARS": MAX_SCRAPE_CHARS
+    }
+
+def _mask(value):
+    if not value: return ""
+    if len(value) < 8: return "*" * len(value)
+    return value[:4] + "*" * (len(value) - 8) + value[-4:]
+
+def update_config(updates):
+    """Updates the .env file with new values."""
+    from dotenv import set_key
+    env_file = ".env"
+    if not os.path.exists(env_file):
+        open(env_file, 'a').close()
+
+    for key, value in updates.items():
+        # Only update known keys for security
+        if key in [
+            "OPENAI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OLLAMA_BASE_URL",
+            "GITHUB_TOKEN", "TOR_SOCKS_HOST", "TOR_SOCKS_PORT", "TOR_CONTROL_PORT",
+            "TOR_PASSWORD", "MAX_SCRAPE_CHARS"
+        ]:
+            set_key(env_file, key, str(value))
+            # Update global variable in memory (rudimentary reload)
+            globals()[key] = value
+
+    # Reload dotenv to ensure os.environ is updated
+    load_dotenv(override=True)

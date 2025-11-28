@@ -345,3 +345,21 @@ async def api_get_scheduled():
 async def api_delete_schedule(query_id: int):
     delete_scheduled_query(query_id)
     return {"status": "ok"}
+
+@app.get("/api/config")
+async def api_get_config():
+    from robin.config import get_config
+    return get_config()
+
+class ConfigUpdateReq(BaseModel):
+    updates: Dict[str, Any]
+
+@app.post("/api/config")
+async def api_update_config(req: ConfigUpdateReq):
+    from robin.config import update_config
+    try:
+        update_config(req.updates)
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Failed to update config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

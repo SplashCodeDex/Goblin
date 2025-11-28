@@ -1,26 +1,21 @@
 "use client"
 import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Separator } from "@/components/ui/separator"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/hooks/use-toast"
 import { AdvancedSettingsDialog } from "@/components/investigate/AdvancedSettingsDialog"
+import { ProgressSteps } from "@/components/investigate/ProgressSteps"
+import { DashboardHeader } from "@/components/investigate/DashboardHeader"
+import { ControlPanel } from "@/components/investigate/ControlPanel"
+import { ResultsView } from "@/components/investigate/ResultsView"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Settings } from "lucide-react"
 
-import { SearchForm } from "@/components/investigate/SearchForm"
-import { Playbooks } from "@/components/investigate/Playbooks"
-import { Watchlist } from "@/components/investigate/Watchlist"
-import { HistoryDialog } from "@/components/investigate/HistoryDialog"
-import { ProgressSteps } from "@/components/investigate/ProgressSteps"
-import { SourcesTable } from "@/components/investigate/SourcesTable"
-import { SummaryCard } from "@/components/investigate/SummaryCard"
-import { ArtifactsTable } from "@/components/investigate/ArtifactsTable"
-import { ResultsTable } from "@/components/investigate/ResultsTable"
-import { OverviewCharts } from "@/components/investigate/OverviewCharts"
-
 import { downloadCSV, downloadJSON } from "@/lib/utils"
+import {
+  health, modelStatus, search, filter, scrapeOne,
+  SearchResult, ScrapedSource, Artifact, HistoryRun
+} from "@/lib/api"
 
 export default function InvestigationPage() {
   const { toast } = useToast()
@@ -103,6 +98,20 @@ export default function InvestigationPage() {
     }
   }
 
+  async function onFilter() {
+    try {
+      const r = await filter(model, query, results)
+      setFilteredRes(r.filtered)
+      // initialize selection: select all
+      const m: Record<string, boolean> = {}
+      r.filtered.forEach((item: SearchResult) => { m[item.link] = true })
+      setSelectedMap(m)
+      toast({ description: "Filtered" })
+    } catch (e: any) {
+      toast({ description: e?.message || "Filter failed", variant: "destructive" })
+    }
+  }
+
   async function onScrape() {
     try {
       setScrapeState(s => ({ ...s, inProgress: true, percent: 0 }))
@@ -121,7 +130,7 @@ export default function InvestigationPage() {
           setPerUrl(prev => prev.map(x => x.url === t.link ? { ...x, status: 'done' } : x))
           setScrapeState(s => ({ ...s, percent: Math.round((i + 1) / targets.length * 100) }))
         }
-        setMisp(s.misp)
+        // setMisp(s.misp) - s is undefined here, and we don't get MISP from scraping
       }
       toast({ description: "Summary ready" })
     } catch (e: any) {
@@ -184,21 +193,11 @@ ${artifacts.map(a => `- ${a.type}: ${a.value}`).join("\n")}
 
   return (
     <div className="container mx-auto p-6 space-y-6 max-w-[1600px]">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold tracking-tight">Investigation Dashboard</h1>
-          <div className="flex gap-2">
-            <Badge variant={status.torReady ? "default" : "destructive"} className="h-6">Tor {status.torReady ? "Ready" : "Not Ready"}</Badge>
-            <Badge variant={status.modelReady ? "default" : "destructive"} className="h-6">Model {status.modelReady ? "Ready" : "Missing"}</Badge>
-          </div>
-        </div>
-        <div className="flex gap-2 items-center">
-          <HistoryDialog onLoad={onLoadHistory} />
-          <Button variant="ghost" size="icon" onClick={() => setSettingsOpen(true)}>
-            <Settings className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      <DashboardHeader
+        status={status}
+        onLoadHistory={onLoadHistory}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
 
       {/* Inline warnings */}
       {(!status.torReady || !status.modelReady) && (
@@ -219,16 +218,12 @@ ${artifacts.map(a => `- ${a.type}: ${a.value}`).join("\n")}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Sidebar: Controls */}
         <div className="col-span-12 lg:col-span-3 space-y-6">
-          <Card className="p-5 space-y-6 border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
-            <div>
-              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4">Control Center</h2>
-              <SearchForm model={model} setModel={setModel} query={query} setQuery={setQuery} />
-            </div>
-            <Separator className="bg-zinc-800" />
-            <Playbooks onSelect={(q) => { setQuery(q); toast({ description: "Playbook loaded" }) }} />
-            <Separator className="bg-zinc-800" />
-            <Watchlist keywords={keywords} setKeywords={setKeywords} hits={hits} />
-          </Card>
+          <ControlPanel
+            model={model} setModel={setModel}
+            query={query} setQuery={setQuery}
+            keywords={keywords} setKeywords={setKeywords}
+            hits={hits}
+          />
         </div>
 
         {/* Main Content: Pipeline & Results */}
@@ -247,56 +242,19 @@ ${artifacts.map(a => `- ${a.type}: ${a.value}`).join("\n")}
             />
           </Card>
 
-          <Tabs defaultValue="overview" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <TabsList className="bg-zinc-900/50 border border-zinc-800">
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="results">Results ({filteredRes.length})</TabsTrigger>
-                <TabsTrigger value="sources">Sources ({scrapeState.sources.length})</TabsTrigger>
-                <TabsTrigger value="artifacts">Artifacts ({artifacts.length})</TabsTrigger>
-              </TabsList>
-
-              {/* Exports Toolbar */}
-              {scrapeState.sources.length > 0 && (
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={downloadReport}>Report</Button>
-                  <Button variant="outline" size="sm" onClick={() => downloadCSV(scrapeState.sources)}>CSV</Button>
-                  <Button variant="outline" size="sm" onClick={() => downloadJSON(scrapeState.sources)}>JSON</Button>
-                  {stix && Object.keys(stix).length > 0 && (
-                    <Button variant="outline" size="sm" onClick={() => downloadJSON(stix)}>STIX</Button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {detailed && perUrl.length > 0 && (
-              <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-3">
-                <div className="text-sm font-medium mb-2">Per-URL progress</div>
-                <div className="grid gap-2 text-sm max-h-40 overflow-y-auto">
-                  {perUrl.map(item => (
-                    <div key={item.url} className="flex items-center justify-between">
-                      <span className="truncate max-w-[70%] text-zinc-400">{item.url}</span>
-                      <span className={item.status === 'done' ? "text-green-400" : "text-zinc-500"}>{item.status}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <TabsContent value="overview" className="mt-0">
-              <OverviewCharts artifacts={artifacts} sources={scrapeState.sources} />
-              <SummaryCard refined={query} summary={summaryText} />
-            </TabsContent>
-            <TabsContent value="results" className="mt-0">
-              <ResultsTable data={filteredRes} selectedMap={selectedMap} setSelectedMap={setSelectedMap} />
-            </TabsContent>
-            <TabsContent value="sources" className="mt-0">
-              <SourcesTable data={scrapeState.sources} />
-            </TabsContent>
-            <TabsContent value="artifacts" className="mt-0">
-              <ArtifactsTable data={artifacts} />
-            </TabsContent>
-          </Tabs>
+          <ResultsView
+            filteredRes={filteredRes}
+            scrapeState={scrapeState}
+            artifacts={artifacts}
+            summaryText={summaryText}
+            stix={stix}
+            selectedMap={selectedMap}
+            setSelectedMap={setSelectedMap}
+            detailed={detailed}
+            perUrl={perUrl}
+            onDownloadReport={downloadReport}
+            query={query}
+          />
         </div>
       </div>
 

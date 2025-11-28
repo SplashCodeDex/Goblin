@@ -12,6 +12,7 @@ const navItems = [
     { name: "Investigate", href: "/", icon: LayoutDashboard },
     { name: "History", href: "/history", icon: History },
     { name: "Schedule", href: "/schedule", icon: CalendarClock },
+    { name: "Settings", href: "/settings", icon: Settings },
 ]
 
 export function Sidebar() {
