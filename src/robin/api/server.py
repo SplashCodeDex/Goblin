@@ -174,27 +174,6 @@ async def api_summary(req: SummaryReq):
     misp = {
         "Event": {
             "uuid": str(uuid.uuid4()),
-            "info": f"Dark web OSINT for: {req.query}",
-            "date": str(pd.Timestamp.utcnow().date()),
-            "Attribute": attrs
-        }
-    }
-
-    # Save run to database
-    try:
-        entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "query": req.query,
-            "refined": "",
-            "results": [],
-            "filtered": [],
-            "scraped": req.scraped,
-            "summary": summary_text,
-            "artifacts": artifacts, # Save artifacts too
-        }
-        save_run(entry)
-    except Exception as e:
-        print(f"Failed to save run: {e}")
 
     return {"summary": summary_text, "artifacts": artifacts, "stix": stix, "misp": misp}
 
