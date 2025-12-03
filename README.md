@@ -76,13 +76,29 @@ chmod +x robin
 robin cli --model gpt-4.1 --query "ransomware payments"
 ```
 
-### Using Python (Development Version)
+### Using Python (Development Version) [Updated]
 
 - With `Python 3.10+` installed, run the following:
 
 ```bash
 pip install -r requirements.txt
-python main.py cli -m gpt-4.1 -q "ransomware payments" -t 12
+# Linux/Mac
+PYTHONPATH=src python -m robin.cli cli -m gemini-2.5-flash -q "ransomware payments" -t 12
+# Windows PowerShell
+$env:PYTHONPATH = "$PWD/src"; python -m robin.cli cli -m gemini-2.5-flash -q "ransomware payments" -t 12
+# Windows cmd
+set PYTHONPATH=%CD%\src && python -m robin.cli cli -m gemini-2.5-flash -q "ransomware payments" -t 12
+```
+
+#### Run the API server
+
+```bash
+# Linux/Mac
+PYTHONPATH=src python -m uvicorn robin.api.server:app --reload --port 8000
+# Windows PowerShell
+$env:PYTHONPATH = "$PWD/src"; python -m uvicorn robin.api.server:app --reload --port 8000
+# Windows cmd
+set PYTHONPATH=%CD%\src && python -m uvicorn robin.api.server:app --reload --port 8000
 ```
 
 #### Environment variables
@@ -95,6 +111,12 @@ Create a `.env` from `.env.example` or export them in your shell:
 
 Note: The app will warn if Tor SOCKS is not detected; searches may return empty without Tor.
 
+Troubleshooting
+- ModuleNotFoundError: Use module path robin.api.server:app and ensure PYTHONPATH=src.
+- Tor not detected: Start Tor with SOCKS at 127.0.0.1:9050 or set TOR_SOCKS_HOST/PORT.
+- GitHub API rate limit: Set GITHUB_TOKEN in .env.
+
+
 Model requirements
 - gpt4o, gpt-4.1: requires OPENAI_API_KEY
 - claude-3-5-sonnet-latest: requires ANTHROPIC_API_KEY
@@ -103,7 +125,7 @@ Model requirements
 
 ---
 
-## Usage
+## Usage [Updated]
 
 ```bash
 Robin: AI-Powered Dark Web OSINT Tool
