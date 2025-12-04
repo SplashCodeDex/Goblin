@@ -3,6 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any
 import logging
+import re
+from uuid import uuid4
+from sse_starlette.sse import EventSourceResponse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -242,18 +245,28 @@ async def api_summary(req: SummaryReq):
     artifacts = result.get("artifacts", {})
     stix = result.get("stix", {})
 
-    # Generate MISP event
+    # Generate a minimal MISP event structure from artifacts
     import uuid
-    import pandas as pd
     attrs = []
     cat_map = {"ipv4": "ip-src", "domains": "domain", "emails": "email-src", "btc": "btc", "eth": "eth"}
     for k, vals in artifacts.items():
         for v in vals:
-            attrs.append({"type": cat_map.get(k, "text"), "value": v, "category": "External analysis"})
+            attrs.append({
+                "type": cat_map.get(k, "text"),
+                "value": v,
+                "category": "External analysis"
+            })
 
     misp = {
         "Event": {
             "uuid": str(uuid.uuid4()),
+            "info": f"Robin OSINT Summary for '{req.query}'",
+            "date": datetime.utcnow().strftime("%Y-%m-%d"),
+            "threat_level_id": 1,
+            "analysis": 2,
+            "Attribute": attrs,
+        }
+    }
 
     return {"summary": summary_text, "artifacts": artifacts, "stix": stix, "misp": misp}
 
