@@ -1,5 +1,7 @@
 import pytest
-from llm import _chunk_text, _extract_iocs
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+from robin.llm import _chunk_text, _extract_iocs
 
 
 def test_chunking_overlap():

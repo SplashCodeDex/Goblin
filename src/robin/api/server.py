@@ -97,9 +97,7 @@ async def api_search(req: SearchReq):
     if "darkweb" in req.sources:
         dw_results = await asyncio.get_running_loop().run_in_executor(
             None,
-            get_search_results,
-            req.refined,
-            req.max_results
+            __import__('functools').partial(get_search_results, req.refined, max_results=req.max_results)
         )
         results.extend(dw_results)
 
@@ -176,7 +174,7 @@ class ScrapeResp(BaseModel):
 
 @app.post("/api/scrape", response_model=ScrapeResp)
 async def api_scrape(req: ScrapeReq):
-    scraped = scrape_multiple(
+    scraped, _meta = scrape_multiple(
         req.filtered,
         max_workers=req.threads,
         request_timeout=req.request_timeout,
@@ -198,7 +196,7 @@ class ScrapeOneResp(BaseModel):
 
 @app.post("/api/scrape_one", response_model=ScrapeOneResp)
 async def api_scrape_one(req: ScrapeOneReq):
-    url, content = scrape_single(req.item)
+    url, content, _meta = scrape_single(req.item)
     return {"url": url, "content": content}
 
 

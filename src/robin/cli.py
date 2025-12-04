@@ -67,7 +67,7 @@ def cli(model, query, threads, output):
 
         search_filtered = filter_results(llm, refined_query, search_results)
 
-        scraped_results = scrape_multiple(search_filtered, max_workers=threads)
+        scraped_results, _meta = scrape_multiple(search_filtered, max_workers=threads)
         sp.ok("✔")
 
     # Generate the intelligence summary.
@@ -88,47 +88,6 @@ def cli(model, query, threads, output):
         f.write(summary)
         click.echo(f"\n\n[OUTPUT] Final intelligence summary saved to {filename}")
 
-
-@robin.command()
-@click.option(
-    "--ui-port",
-    default=8501,
-    show_default=True,
-    type=int,
-    help="Port for the Streamlit UI",
-)
-@click.option(
-    "--ui-host",
-    default="localhost",
-    show_default=True,
-    type=str,
-    help="Host for the Streamlit UI",
-)
-def ui(ui_port, ui_host):
-    """Run Robin in Web UI mode."""
-    import sys, os
-
-    # Use streamlit's internet CLI entrypoint
-    from streamlit.web import cli as stcli
-
-    # When PyInstaller one-file, data files livei n _MEIPASS
-    if getattr(sys, "frozen", False):
-        base = sys._MEIPASS
-    else:
-        base = os.path.dirname(__file__)
-
-    ui_script = os.path.join(base, "ui.py")
-    # Build sys.argv
-    sys.argv = [
-        "streamlit",
-        "run",
-        ui_script,
-        f"--server.port={ui_port}",
-        f"--server.address={ui_host}",
-        "--global.developmentMode=false",
-    ]
-    # This will never return until streamlit exits
-    sys.exit(stcli.main())
 
 
 if __name__ == "__main__":

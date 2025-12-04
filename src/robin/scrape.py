@@ -188,7 +188,7 @@ def scrape_multiple(urls_data, max_workers=5, request_timeout=30, use_cache=True
       - max_workers: number of concurrent threads for scraping.
 
     Returns:
-      A dictionary mapping each URL to its scraped content.
+      Tuple[Dict[str,str], Dict[str, Any]]: (scraped_content_by_url, metadata_by_url)
     """
     results = {}
     meta = {}

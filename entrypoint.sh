@@ -19,4 +19,5 @@ done
 echo "Tor is ready."
 echo "Starting Robin - AI-Powered Dark Web OSINT Tool..."
 
-exec python main.py "$@"
+# Execute the provided command (e.g., uvicorn) so docker-compose can control the process
+exec "$@"

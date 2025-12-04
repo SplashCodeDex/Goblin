@@ -31,7 +31,7 @@ Data flow: refine -> search -> filter -> select -> preview -> scrape -> summariz
 - ⚙️ **Modular Architecture** – Clean separation between search, scrape, and LLM workflows.
 - 🤖 **Multi-Model Support** – Easily switch between OpenAI, Claude, Gemini or local models like Ollama.
 - 💻 **CLI-First Design** – Built for terminal warriors and automation ninjas.
-- 🐳 **Docker-Ready** – Optional Docker deployment for clean, isolated usage.
+- 🐳 **Docker-Ready** – API server for integrations and optional Next.js frontend.
 - 📝 **Custom Reporting** – Save investigation output to file for reporting or further analysis.
 - 🧩 **Extensible** – Easy to plug in new search engines, models, or output formats.
 
@@ -53,14 +53,12 @@ Data flow: refine -> search -> filter -> select -> preview -> scrape -> summariz
 >
 > For Ollama, provide `http://host.docker.internal:11434` as Ollama URL if running using docker image method or `http://127.0.0.1:11434` for other methods.
 
-### Docker (Web UI Mode) [Recommended]
+### Docker (API Server)
 
 ```bash
-docker run --rm \
-   -v "$(pwd)/.env:/app/.env" \
-   --add-host=host.docker.internal:host-gateway \
-   -p 8501:8501 \
-   apurvsg/robin:latest ui --ui-port 8501 --ui-host 0.0.0.0
+docker compose up --build
+# FastAPI: http://localhost:8000/api/health
+# Next.js (optional web shell): http://localhost:3000
 ```
 
 ### Release Binary (CLI Mode)
@@ -76,7 +74,7 @@ chmod +x robin
 robin cli --model gpt-4.1 --query "ransomware payments"
 ```
 
-### Using Python (Development Version) [Updated]
+### Using Python (Development Version)
 
 - With `Python 3.10+` installed, run the following:
 
@@ -90,7 +88,7 @@ $env:PYTHONPATH = "$PWD/src"; python -m robin.cli cli -m gemini-2.5-flash -q "ra
 set PYTHONPATH=%CD%\src && python -m robin.cli cli -m gemini-2.5-flash -q "ransomware payments" -t 12
 ```
 
-#### Run the API server
+#### Run the API server (no Streamlit UI)
 
 ```bash
 # Linux/Mac
@@ -115,6 +113,7 @@ Troubleshooting
 - ModuleNotFoundError: Use module path robin.api.server:app and ensure PYTHONPATH=src.
 - Tor not detected: Start Tor with SOCKS at 127.0.0.1:9050 or set TOR_SOCKS_HOST/PORT.
 - GitHub API rate limit: Set GITHUB_TOKEN in .env.
+- Removed Streamlit UI: use the CLI or FastAPI endpoints instead.
 
 
 Model requirements

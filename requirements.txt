@@ -3,7 +3,6 @@ click
 yaspin
 pysocks
 requests
-streamlit
 python-dotenv
 langchain-openai
 langchain-ollama
@@ -11,7 +10,6 @@ langchain-anthropic
 langchain_community
 langchain-google-genai
 pandas
-streamlit-shadcn-ui
 langdetect
 googletrans==4.0.0-rc1
 pdfplumber
