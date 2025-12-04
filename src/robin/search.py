@@ -147,6 +147,36 @@ ENGINE_HANDLERS = {}
 # Example specialized handlers for known engines (pattern match by hostname substring)
 # Ahmia-like: try query params for 'q' and follow pagination anchors with rel or labels
 
+def _find_next_link_generic(soup: BeautifulSoup, current_url: str) -> str | None:
+    # 1) rel=next
+    rel_next = soup.find('a', attrs={'rel': 'next'})
+    if rel_next and rel_next.get('href'):
+        return urljoin(current_url, rel_next.get('href'))
+    # 2) class contains next or pagination-next
+    for a in soup.find_all('a'):
+        cls = ' '.join(a.get('class', [])).lower()
+        if 'next' in cls or 'pagination-next' in cls:
+            href = a.get('href') or ''
+            if href:
+                return urljoin(current_url, href)
+    # 3) text contains common labels
+    for a in soup.find_all('a'):
+        txt = (a.get_text(' ', strip=True) or '').lower()
+        if any(k in txt for k in ['next', 'more', 'older', '>>', '>']):
+            href = a.get('href') or ''
+            if href:
+                return urljoin(current_url, href)
+    # 4) pagination containers
+    pagers = soup.select('.pagination a, nav.pagination a, ul.pagination a')
+    for a in pagers:
+        txt = (a.get_text(' ', strip=True) or '').lower()
+        if any(k in txt for k in ['next', 'older', 'more', '>']):
+            href = a.get('href') or ''
+            if href:
+                return urljoin(current_url, href)
+    return None
+
+
 def _ahmia_handler(session_get, base_url, request_timeout, max_pages=2, max_per_engine=100):
     collected = []
     url = base_url
@@ -159,7 +189,7 @@ def _ahmia_handler(session_get, base_url, request_timeout, max_pages=2, max_per_
         if len(collected) >= max_per_engine:
             break
         # Prefer rel="next" or class/text hints
-        next_link = _find_next_link(soup, url)
+        next_link = _find_next_link_generic(soup, url)
         if not next_link:
             break
         url = next_link
@@ -239,7 +269,7 @@ def _generic_engine_handler(session_get, base_url, request_timeout, max_pages=1,
         collected.extend(_extract_onions_from_soup(soup))
         if len(collected) >= max_per_engine:
             break
-        next_link = _find_next_link(soup, url)
+        next_link = _find_next_link_generic(soup, url)
         if not next_link:
             break
         url = next_link

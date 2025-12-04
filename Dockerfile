@@ -1,5 +1,8 @@
 FROM python:3.10-slim-bullseye AS builder
 
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
 RUN DEBIAN_FRONTEND="noninteractive" apt-get update && \
     apt-get install -y --no-install-recommends \
       tor \
@@ -14,11 +17,17 @@ WORKDIR /app
 COPY requirements.txt .
 
 RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Create non-root user
+RUN groupadd -r robin && useradd -r -g robin robin && \
+    chown -R robin:robin /app
+
 RUN chmod +x /app/entrypoint.sh
+
+USER robin
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 

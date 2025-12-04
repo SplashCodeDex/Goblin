@@ -4,13 +4,24 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["python", "-m", "uvicorn", "robin.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["bash", "-lc", "python -m uvicorn robin.api.server:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-2}"]
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "exec </dev/tcp/127.0.0.1/8000"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     env_file:
       - .env
     environment:
       - PYTHONPATH=/app/src
+      - UVICORN_WORKERS=2
     ports:
       - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./.cache:/app/.cache
+    restart: unless-stopped
     # Tor is started in entrypoint; ensure ports are available inside container
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -27,4 +38,5 @@ services:
     volumes:
       - ./web:/app
     depends_on:
-      - api
+      api:
+        condition: service_healthy

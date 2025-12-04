@@ -34,10 +34,13 @@ async def startup_event():
 # Simple in-memory cache for streaming summary
 _SUMMARY_CACHE: Dict[str, Dict[str, str]] = {}
 
-# CORS for local dev with Next.js
+# CORS configuration from environment (comma-separated), defaults to * for dev
+import os
+_origins = os.getenv("CORS_ALLOW_ORIGINS", "*")
+allow_origins = [o.strip() for o in _origins.split(",") if o.strip()] if _origins else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten in production
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

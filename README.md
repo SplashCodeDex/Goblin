@@ -31,7 +31,7 @@ Data flow: refine -> search -> filter -> select -> preview -> scrape -> summariz
 - ⚙️ **Modular Architecture** – Clean separation between search, scrape, and LLM workflows.
 - 🤖 **Multi-Model Support** – Easily switch between OpenAI, Claude, Gemini or local models like Ollama.
 - 💻 **CLI-First Design** – Built for terminal warriors and automation ninjas.
-- 🐳 **Docker-Ready** – API server for integrations and optional Next.js frontend.
+- 🐳 **Docker-Ready** – API server with a built-in Next.js UI.
 - 📝 **Custom Reporting** – Save investigation output to file for reporting or further analysis.
 - 🧩 **Extensible** – Easy to plug in new search engines, models, or output formats.
 
