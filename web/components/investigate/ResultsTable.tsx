@@ -32,7 +32,7 @@ export function ResultsTable(props: {
                         <TableHead className="w-[50px]">
                             <Checkbox
                                 checked={data.length > 0 && data.every(d => selectedMap[d.link])}
-                                onCheckedChange={toggleAll}
+                                onCheckedChange={(_)=> toggleAll()}
                             />
                         </TableHead>
                         <TableHead>Title</TableHead>
@@ -41,12 +41,12 @@ export function ResultsTable(props: {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {data.map((item, i) => (
-                        <TableRow key={i}>
+                    {data.map((item) => (
+                        <TableRow key={item.link}>
                             <TableCell>
                                 <Checkbox
                                     checked={!!selectedMap[item.link]}
-                                    onCheckedChange={() => toggle(item.link)}
+                                    onCheckedChange={(_)=> toggle(item.link)}
                                 />
                             </TableCell>
                             <TableCell className="font-medium max-w-[200px] truncate" title={item.title}>
@@ -67,14 +67,14 @@ export function ResultsTable(props: {
                             </TableCell>
                             <TableCell>
                                 <div className="flex gap-2">
-                                    <a href={item.link} target="_blank" rel="noreferrer">
-                                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <a href={item.link} target="_blank" rel="noopener noreferrer">
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Open link in new tab">
                                             <ExternalLink className="h-4 w-4" />
                                         </Button>
                                     </a>
                                     <Dialog>
                                         <DialogTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Preview result">
                                                 <Eye className="h-4 w-4" />
                                             </Button>
                                         </DialogTrigger>
@@ -84,7 +84,7 @@ export function ResultsTable(props: {
                                             </DialogHeader>
                                             <div className="space-y-4">
                                                 <h3 className="font-bold">{item.title}</h3>
-                                                <a href={item.link} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline text-sm break-all">{item.link}</a>
+                                                <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm break-all">{item.link}</a>
                                                 <p className="text-zinc-300 whitespace-pre-wrap">{item.snippet}</p>
                                             </div>
                                         </DialogContent>

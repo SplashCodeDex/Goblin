@@ -40,10 +40,10 @@ export function ResultsView({
                 {scrapeState.sources.length > 0 && (
                     <div className="flex gap-2">
                         <Button variant="outline" size="sm" onClick={onDownloadReport}>Report</Button>
-                        <Button variant="outline" size="sm" onClick={() => downloadCSV(scrapeState.sources)}>CSV</Button>
-                        <Button variant="outline" size="sm" onClick={() => downloadJSON(scrapeState.sources)}>JSON</Button>
+                        <Button variant="outline" size="sm" onClick={() => downloadCSV(scrapeState.sources, "sources.csv")}>CSV</Button>
+                        <Button variant="outline" size="sm" onClick={() => downloadJSON(scrapeState.sources, "sources.json")}>JSON</Button>
                         {stix && Object.keys(stix).length > 0 && (
-                            <Button variant="outline" size="sm" onClick={() => downloadJSON(stix)}>STIX</Button>
+                            <Button variant="outline" size="sm" onClick={() => downloadJSON(stix, "stix.json")}>STIX</Button>
                         )}
                     </div>
                 )}

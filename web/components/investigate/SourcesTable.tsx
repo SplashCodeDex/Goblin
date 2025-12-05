@@ -14,9 +14,9 @@ export function SourcesTable({ data }: { data: Source[] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((s, i) => (
-            <TableRow key={i}>
-              <TableCell className="max-w-[340px] truncate"><a href={s.url} className="text-accent hover:underline" target="_blank" rel="noreferrer">{s.url}</a></TableCell>
+          {data.map((s) => (
+            <TableRow key={s.url}>
+              <TableCell className="max-w-[340px] truncate"><a href={s.url} className="text-accent hover:underline" target="_blank" rel="noopener noreferrer">{s.url}</a></TableCell>
               <TableCell className="text-sm">{s.excerpt}</TableCell>
             </TableRow>
           ))}

@@ -27,7 +27,7 @@ export function SearchForm(props: {
           <SelectContent>
             <SelectItem value="gemini-2.5-flash">gemini-2.5-flash</SelectItem>
             <SelectItem value="gpt-4.1">gpt-4.1</SelectItem>
-            <SelectItem value="gpt4o">gpt4o</SelectItem>
+            <SelectItem value="gpt-4o">gpt-4o</SelectItem>
             <SelectItem value="claude-3-5-sonnet-latest">claude-3-5-sonnet-latest</SelectItem>
             <SelectItem value="llama3.1">llama3.1</SelectItem>
           </SelectContent>

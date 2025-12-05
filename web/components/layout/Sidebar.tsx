@@ -71,6 +71,7 @@ export function Sidebar() {
                     size="icon"
                     className="w-full flex items-center justify-center text-zinc-500 hover:text-white"
                     onClick={() => setIsCollapsed(!isCollapsed)}
+                    aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
                 >
                     {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
                 </Button>

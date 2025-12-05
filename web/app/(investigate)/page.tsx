@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Settings } from "lucide-react"
 
 import { downloadCSV, downloadJSON } from "@/lib/utils"
+import { extractArtifacts } from "@/lib/api"
 import {
   health, modelStatus, search, filter, scrapeOne,
   SearchResult, ScrapedSource, Artifact, HistoryRun
@@ -130,7 +131,7 @@ export default function InvestigationPage() {
           setPerUrl(prev => prev.map(x => x.url === t.link ? { ...x, status: 'done' } : x))
           setScrapeState(s => ({ ...s, percent: Math.round((i + 1) / targets.length * 100) }))
         }
-        // setMisp(s.misp) - s is undefined here, and we don't get MISP from scraping
+        // After sequential scrape, populate sources and extract artifacts\n        const sources = Object.entries(scraped).map(([url, content]) => ({ url, excerpt: content.slice(0, 240) }))\n        setScrapeState({ inProgress: false, percent: 100, sources })\n        try {\n          const extract = await extractArtifacts(scraped)\n          setArtifacts(extract.artifacts || [])\n        } catch {}
       }
       toast({ description: "Summary ready" })
     } catch (e: any) {

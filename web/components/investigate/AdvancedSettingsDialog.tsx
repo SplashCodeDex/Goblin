@@ -2,6 +2,8 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 
 export function AdvancedSettingsDialog(props: {
   open: boolean
@@ -51,20 +53,20 @@ export function AdvancedSettingsDialog(props: {
             <Input type="number" min={5} max={90} value={requestTimeout} onChange={e => setRequestTimeout(Number(e.target.value))} />
           </div>
           <div className="flex items-center gap-2">
-            <input id="useCache" type="checkbox" checked={useCache} onChange={e => setUseCache(e.target.checked)} />
-            <label htmlFor="useCache" className="text-sm">Use disk cache</label>
+            <Checkbox id="useCache" checked={useCache} onCheckedChange={(v)=> setUseCache(Boolean(v))} />
+            <Label htmlFor="useCache" className="text-sm">Use disk cache</Label>
           </div>
           <div className="flex items-center gap-2">
-            <input id="loadCachedOnly" type="checkbox" checked={loadCachedOnly} onChange={e => setLoadCachedOnly(e.target.checked)} />
-            <label htmlFor="loadCachedOnly" className="text-sm">Load cached only (Offline mode)</label>
+            <Checkbox id="loadCachedOnly" checked={loadCachedOnly} onCheckedChange={(v)=> setLoadCachedOnly(Boolean(v))} />
+            <Label htmlFor="loadCachedOnly" className="text-sm">Load cached only (Offline mode)</label>
           </div>
           <div className="flex items-center gap-2">
-            <input id="translate" type="checkbox" checked={translate} onChange={e => setTranslate(e.target.checked)} />
-            <label htmlFor="translate" className="text-sm">Auto-translate non-English content</label>
+            <Checkbox id="translate" checked={translate} onCheckedChange={(v)=> setTranslate(Boolean(v))} />
+            <Label htmlFor="translate" className="text-sm">Auto-translate non-English content</label>
           </div>
           <div className="flex items-center gap-2">
-            <input id="detailed" type="checkbox" checked={!!detailed} onChange={e => setDetailed?.(e.target.checked)} />
-            <label htmlFor="detailed" className="text-sm">Detailed per-URL progress (sequential)</label>
+            <Checkbox id="detailed" checked={!!detailed} onCheckedChange={(v)=> setDetailed?.(Boolean(v))} />
+            <Label htmlFor="detailed" className="text-sm">Detailed per-URL progress (sequential)</label>
           </div>
           <div className="grid gap-2">
             <label className="text-sm font-semibold">GitHub Filters</label>
@@ -79,8 +81,8 @@ export function AdvancedSettingsDialog(props: {
               </div>
             </div>
             <div className="flex items-center gap-2 mt-2">
-              <input id="includeCommits" type="checkbox" checked={props.includeCommits} onChange={e => props.setIncludeCommits(e.target.checked)} />
-              <label htmlFor="includeCommits" className="text-sm">Search Commit History (Secrets)</label>
+              <Checkbox id="includeCommits" checked={props.includeCommits} onCheckedChange={(v)=> props.setIncludeCommits(Boolean(v))} />
+              <Label htmlFor="includeCommits" className="text-sm">Search Commit History (Secrets)</label>
             </div>
           </div>
           <DialogFooter>

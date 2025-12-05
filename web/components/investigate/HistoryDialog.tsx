@@ -20,7 +20,7 @@ export function HistoryDialog(props: { onLoad: (run: any) => void }) {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="outline" size="icon" title="History">
+                <Button variant="outline" size="icon" title="History" aria-label="Open history dialog">
                     <History className="h-4 w-4" />
                 </Button>
             </DialogTrigger>
