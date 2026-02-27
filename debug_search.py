@@ -1,7 +1,7 @@
 import requests
 import json
 
-url = "http://localhost:8001/api/search"
+url = "http://localhost:8000/api/search"
 payload = {
     "refined": "test query",
     "threads": 5,

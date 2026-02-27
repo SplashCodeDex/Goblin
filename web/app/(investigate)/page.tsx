@@ -131,7 +131,32 @@ export default function InvestigationPage() {
           setPerUrl(prev => prev.map(x => x.url === t.link ? { ...x, status: 'done' } : x))
           setScrapeState(s => ({ ...s, percent: Math.round((i + 1) / targets.length * 100) }))
         }
-        // After sequential scrape, populate sources and extract artifacts\n        const sources = Object.entries(scraped).map(([url, content]) => ({ url, excerpt: content.slice(0, 240) }))\n        setScrapeState({ inProgress: false, percent: 100, sources })\n        try {\n          const extract = await extractArtifacts(scraped)\n          setArtifacts(extract.artifacts || [])\n        } catch {}
+        // After sequential scrape, populate sources and extract artifacts
+        const sources = Object.entries(scraped).map(([url, content]) => ({ url, excerpt: content.slice(0, 240) }))
+        setScrapeState({ inProgress: false, percent: 100, sources })
+        try {
+          const extract = await extractArtifacts(scraped)
+          setArtifacts(extract.artifacts || [])
+        } catch {}
+        
+        // Generate summary using LLM
+        try {
+          const summaryRes = await fetch(`${API_BASE}/summary`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model, query, scraped }),
+          })
+          if (!summaryRes.ok) {
+            throw new Error(`Summary generation failed: ${summaryRes.status}`)
+          }
+          const summaryData = await summaryRes.json()
+          setSummaryText(summaryData.summary || "")
+          setStix(summaryData.stix || {})
+          setMisp(summaryData.misp || {})
+        } catch (e: any) {
+          console.error("Summary generation error:", e)
+          toast({ description: e?.message || "Summary generation failed", variant: "destructive" })
+        }
       }
       toast({ description: "Summary ready" })
     } catch (e: any) {

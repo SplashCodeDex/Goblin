@@ -69,7 +69,7 @@ async def model_status(model: str) -> Dict[str, Any]:
 
 @app.post("/api/refine", response_model=RefineResp)
 async def api_refine(req: RefineReq):
-    logger.info(f"DEBUG: api_refine called with {req}")
+    logger.debug(f"api_refine called with {req}")
     try:
         missing = missing_model_env(req.model)
         if missing:

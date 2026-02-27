@@ -300,7 +300,7 @@ def generate_summary_and_artifacts(llm, query, content):
     """
     import json as _json
     prompt_template = ChatPromptTemplate([
-        ("system", synthesis_prompt), ("user", "{dummy}")
+        ("system", synthesis_prompt), ("user", "{citation_instruction}")
     ])
     chain = prompt_template | llm | StrOutputParser()
     summary = chain.invoke({
@@ -308,7 +308,7 @@ def generate_summary_and_artifacts(llm, query, content):
         "partials": "\n\n".join(partial_summaries),
         "iocs": _json.dumps({k: sorted(list(v)) for k, v in all_iocs.items()}, ensure_ascii=False),
         "srcs": _json.dumps(list(sources.keys()), ensure_ascii=False),
-        "dummy": "Generate final report with explicit per-insight citations using [index] markers and add a 'Sources cited' section mapping [index] -> URL."
+        "citation_instruction": "Generate final report with explicit per-insight citations using [index] markers and add a 'Sources cited' section mapping [index] -> URL."
     })
 
     # Convert IOC sets to lists for serialization
