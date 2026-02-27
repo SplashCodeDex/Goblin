@@ -20,7 +20,9 @@ export function OverviewCharts({ artifacts, sources }: { artifacts: Artifact[], 
         try {
             const domain = new URL(curr.url).hostname
             acc[domain] = (acc[domain] || 0) + 1
-        } catch { }
+        } catch (e: any) {
+            console.error("Failed to parse URL:", curr.url, e)
+        }
         return acc
     }, {})
 

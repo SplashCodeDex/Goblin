@@ -24,7 +24,9 @@ export function Playbooks(props: {
         if (saved) {
             try {
                 setPlaybooks({ ...DEFAULT_PLAYBOOKS, ...JSON.parse(saved) })
-            } catch { }
+            } catch (e: any) {
+                console.error("Failed to parse saved playbooks:", e)
+            }
         }
     }, [])
 

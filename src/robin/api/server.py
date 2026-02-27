@@ -251,7 +251,21 @@ async def api_summary(req: SummaryReq):
     # Generate a minimal MISP event structure from artifacts
     import uuid
     attrs = []
-    cat_map = {"ipv4": "ip-src", "domains": "domain", "emails": "email-src", "btc": "btc", "eth": "eth"}
+    cat_map = {
+        "ipv4": "ip-src",
+        "ipv6": "ip-src", 
+        "domains": "domain",
+        "emails": "email-src",
+        "btc": "btc",
+        "eth": "btc",
+        "urls": "url",
+        "md5": "md5",
+        "sha1": "sha1",
+        "sha256": "sha256",
+        "cve": "vulnerability",
+        "email_password": "email-src",
+        "api_keys": "text"
+    }
     for k, vals in artifacts.items():
         for v in vals:
             attrs.append({
@@ -314,16 +328,40 @@ class ExtractReq(BaseModel):
 @app.post("/api/extract")
 async def api_extract(req: ExtractReq) -> Dict[str, Any]:
     artifacts = []
-    email_re = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-    btc_re = re.compile(r"\b[13][a-km-zA-HJ-NP-Z1-9]{25,34}\b")
-    domain_re = re.compile(r"\b(?!www\.)[a-zA-Z0-9-]+\.[a-zA-Z]{2,}\b")
+    
+    # Comprehensive regex patterns for artifact extraction
+    patterns = {
+        "email": re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"),
+        "btc": re.compile(r"\b(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}\b"),
+        "eth": re.compile(r"\b0x[a-fA-F0-9]{40}\b"),
+        "domain": re.compile(r"\b(?!-)[A-Za-z0-9-]{1,63}(?<!-)\.[A-Za-z]{2,6}\b"),
+        "ipv4": re.compile(r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"),
+        "ipv6": re.compile(r"\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b|\b(?:[0-9a-fA-F]{1,4}:){1,7}:\b|\b(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}\b"),
+        "url": re.compile(r"https?://[^\s<>\"{}|\\^`\[\]]+"),
+        "md5": re.compile(r"\b[a-fA-F0-9]{32}\b"),
+        "sha1": re.compile(r"\b[a-fA-F0-9]{40}\b"),
+        "sha256": re.compile(r"\b[a-fA-F0-9]{64}\b"),
+        "cve": re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE),
+    }
+    
     for url, content in req.scraped.items():
-        for m in email_re.findall(content):
-            artifacts.append({"type": "email", "value": m, "context": url})
-        for m in btc_re.findall(content):
-            artifacts.append({"type": "btc", "value": m, "context": url})
-        for m in domain_re.findall(content):
-            artifacts.append({"type": "domain", "value": m, "context": url})
+        # Extract standard patterns
+        for artifact_type, pattern in patterns.items():
+            for match in pattern.findall(content):
+                artifacts.append({"type": artifact_type, "value": match, "context": url})
+        
+        # Extract email:password combinations
+        email_pass_pattern = re.compile(r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\s*[:;,\s]+\s*([^\s]{4,})")
+        for email, password in email_pass_pattern.findall(content):
+            if len(password) >= 4 and len(password) <= 128:
+                artifacts.append({"type": "email_password", "value": f"{email}:{password}", "context": url})
+        
+        # Extract API keys (common patterns)
+        api_pattern = re.compile(r"(?:api[_-]?key|apikey|api[_-]?token|access[_-]?token|secret[_-]?key)['\"]?\s*[:=]\s*['\"]?([a-zA-Z0-9_\-]{20,256})['\"]?", re.IGNORECASE)
+        for api_key in api_pattern.findall(content):
+            if len(api_key) >= 20 and len(api_key) <= 256 and not re.match(r'^[0-9]+$', api_key):
+                artifacts.append({"type": "api_key", "value": api_key, "context": url})
+    
     return {"artifacts": artifacts}
 
 

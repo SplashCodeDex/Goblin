@@ -191,21 +191,54 @@ def _chunk_text(text: str, max_chars: int = 3000, overlap: int = 200):
 
 
 def _extract_iocs(text: str):
-    # Simple regexes for common IOCs; can be extended
+    # Comprehensive regexes for IOCs and sensitive data
     patterns = {
         "emails": r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
-        "btc": r"\b(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}\b", # Improved BTC regex
+        "btc": r"\b(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}\b",
         "eth": r"\b0x[a-fA-F0-9]{40}\b",
-        "domains": r"\b(?!-)[A-Za-z0-9-]{1,63}(?<!-)\.[A-Za-z]{2,6}\b", # Improved domain regex
-        "ipv4": r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b", # Improved IPv4 regex
+        "domains": r"\b(?!-)[A-Za-z0-9-]{1,63}(?<!-)\.[A-Za-z]{2,6}\b",
+        "ipv4": r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b",
+        "ipv6": r"\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b|\b(?:[0-9a-fA-F]{1,4}:){1,7}:\b|\b(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}\b",
+        "urls": r"https?://[^\s<>\"{}|\\^`\[\]]+",
+        "md5": r"\b[a-fA-F0-9]{32}\b",
+        "sha1": r"\b[a-fA-F0-9]{40}\b",
+        "sha256": r"\b[a-fA-F0-9]{64}\b",
+        "cve": r"\bCVE-\d{4}-\d{4,7}\b",
     }
     out = {}
     import re as _re
+    
+    # Extract all standard patterns
     for k, pat in patterns.items():
         try:
-            out[k] = sorted(set(_re.findall(pat, text)))
+            out[k] = sorted(set(_re.findall(pat, text, _re.IGNORECASE if k == "cve" else 0)))
         except Exception:
             out[k] = []
+    
+    # Extract email:password combinations
+    try:
+        email_pass_pattern = r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\s*[:;,\s]+\s*([^\s]{4,})"
+        matches = _re.findall(email_pass_pattern, text)
+        out["email_password"] = sorted(set([f"{email}:{password}" for email, password in matches if len(password) >= 4 and len(password) <= 128]))
+    except Exception:
+        out["email_password"] = []
+    
+    # Extract API key patterns (common formats)
+    try:
+        api_patterns = [
+            r"(?:api[_-]?key|apikey|api[_-]?token|access[_-]?token|secret[_-]?key)['\"]?\s*[:=]\s*['\"]?([a-zA-Z0-9_\-]{20,})['\"]?",
+            r"\b[A-Za-z0-9_-]{40,}\b",  # Generic long alphanumeric strings
+        ]
+        api_keys = set()
+        for pat in api_patterns:
+            found = _re.findall(pat, text, _re.IGNORECASE)
+            api_keys.update(found)
+        # Filter out common false positives
+        filtered_keys = [k for k in api_keys if len(k) >= 20 and len(k) <= 256 and not _re.match(r'^[0-9]+$', k)]
+        out["api_keys"] = sorted(set(filtered_keys))
+    except Exception:
+        out["api_keys"] = []
+    
     return out
 
 

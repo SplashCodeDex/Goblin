@@ -90,7 +90,9 @@ export default function InvestigationPage() {
       try {
         const ms = await modelStatus(model)
         setStatus(s => ({ ...s, modelReady: ms.ready, missing: ms.missing }))
-      } catch { }
+      } catch (e: any) {
+        console.error("Failed to check model status:", e)
+      }
 
     } catch (e: any) {
       toast({ description: e?.message || "Search failed", variant: "destructive" })
@@ -137,9 +139,96 @@ export default function InvestigationPage() {
         try {
           const extract = await extractArtifacts(scraped)
           setArtifacts(extract.artifacts || [])
-        } catch {}
+        } catch (e: any) {
+          console.error("Failed to extract artifacts:", e)
+        }
         
-        // Generate summary using LLM
+        // Generate summary using streaming SSE
+        try {
+          // First cache the scraped content
+          const cacheRes = await fetch(`${API_BASE}/cache_scraped`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ scraped }),
+          })
+          if (!cacheRes.ok) {
+            throw new Error(`Failed to cache scraped content: ${cacheRes.status}`)
+          }
+          const { id } = await cacheRes.json()
+          
+          // Now stream the summary
+          const eventSource = new EventSource(`${API_BASE}/summary_stream?model=${encodeURIComponent(model)}&query=${encodeURIComponent(query)}&id=${id}`)
+          let streamedSummary = ""
+          
+          eventSource.onmessage = (event) => {
+            streamedSummary += event.data
+            setSummaryText(streamedSummary)
+          }
+          
+          eventSource.onerror = (error) => {
+            console.error("SSE error:", error)
+            eventSource.close()
+            
+            // Fallback to batch summary if streaming fails
+            fetch(`${API_BASE}/summary`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model, query, scraped }),
+            })
+              .then(res => res.json())
+              .then(data => {
+                setSummaryText(data.summary || "")
+                setStix(data.stix || {})
+                setMisp(data.misp || {})
+              })
+              .catch(e => {
+                console.error("Fallback summary generation error:", e)
+                toast({ description: "Summary generation failed", variant: "destructive" })
+              })
+          }
+          
+          eventSource.addEventListener("close", () => {
+            eventSource.close()
+            // After streaming completes, get artifacts, STIX, and MISP
+            fetch(`${API_BASE}/summary`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model, query, scraped }),
+            })
+              .then(res => res.json())
+              .then(data => {
+                setStix(data.stix || {})
+                setMisp(data.misp || {})
+              })
+              .catch(e => {
+                console.error("Failed to get STIX/MISP data:", e)
+              })
+          })
+        } catch (e: any) {
+          console.error("Summary generation error:", e)
+          toast({ description: e?.message || "Summary generation failed", variant: "destructive" })
+        }
+      } else {
+        // Non-detailed mode: batch scraping and summary
+        const scraped: Record<string, string> = {}
+        for (let i = 0; i < targets.length; i++) {
+          const t = targets[i]
+          const r = await scrapeOne(t)
+          scraped[r.url] = r.content
+          setScrapeState(s => ({ ...s, percent: Math.round((i + 1) / targets.length * 100) }))
+        }
+        
+        const sources = Object.entries(scraped).map(([url, content]) => ({ url, excerpt: content.slice(0, 240) }))
+        setScrapeState({ inProgress: false, percent: 100, sources })
+        
+        try {
+          const extract = await extractArtifacts(scraped)
+          setArtifacts(extract.artifacts || [])
+        } catch (e: any) {
+          console.error("Failed to extract artifacts:", e)
+        }
+        
+        // Batch summary generation
         try {
           const summaryRes = await fetch(`${API_BASE}/summary`, {
             method: "POST",
