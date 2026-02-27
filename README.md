@@ -102,10 +102,14 @@ set PYTHONPATH=%CD%\src && python -m uvicorn robin.api.server:app --reload --por
 #### Environment variables
 Create a `.env` from `.env.example` or export them in your shell:
 
+**Backend (Python/FastAPI):**
 - OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY (set the one(s) you plan to use)
 - OLLAMA_BASE_URL (e.g., http://127.0.0.1:11434)
 - TOR_SOCKS_HOST and TOR_SOCKS_PORT (default 127.0.0.1:9050)
 - MAX_SCRAPE_CHARS (default 1200)
+
+**Frontend (Next.js):**
+- NEXT_PUBLIC_API_BASE_URL (e.g., http://localhost:8000 for local dev, or your production API URL)
 
 Note: The app will warn if Tor SOCKS is not detected; searches may return empty without Tor.
 

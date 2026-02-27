@@ -62,8 +62,11 @@ services:
 - Add metrics if needed (e.g., Prometheus FastAPI instrumentation).
 
 ## 7) Frontend (Next.js)
-- Set NEXT_PUBLIC_API_BASE_URL to your API URL (e.g., https://api.example.com).
+- Set NEXT_PUBLIC_API_BASE_URL to your API URL (e.g., https://api.example.com or http://localhost:8000 for local development).
+- The frontend will automatically use this environment variable to configure the API base URL.
+- If not set, it defaults to http://localhost:8000/api.
 - Build and serve via a node server or export static (if applicable) behind the same reverse proxy.
+- Install dependencies with `npm install` in the web directory before building.
 
 ### docker-compose quick start
 ```

@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Settings } from "lucide-react"
 
 import { downloadCSV, downloadJSON } from "@/lib/utils"
-import { extractArtifacts } from "@/lib/api"
+import { extractArtifacts, API_BASE } from "@/lib/api"
 import {
   health, modelStatus, search, filter, scrapeOne,
   SearchResult, ScrapedSource, Artifact, HistoryRun
