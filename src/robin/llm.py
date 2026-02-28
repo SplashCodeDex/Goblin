@@ -88,10 +88,15 @@ def filter_results(llm, query, results):
         return []
 
     system_prompt = """
-    You are a Cybercrime Threat Intelligence Expert. You are given a dark web search query and a list of search results in the form of index, link and title.
-    Your task is select the Top 20 relevant results that best match the search query for user to investigate more.
-    Rule:
-    1. Output ONLY atmost top 20 indices (comma-separated list) no more than that that best match the input query
+    You are a Cybercrime Threat Intelligence Expert. You are given a search query and a list of search results.
+    Each result contains: index, link, title, and optionally a snippet (description or context).
+    Your task is to select the Top 20 most relevant results that best match the search query for further investigation.
+    
+    Rules:
+    1. Analyze both the title AND the snippet (when available) to determine relevance
+    2. Prioritize results where the snippet provides concrete evidence of relevance
+    3. Output ONLY the top 20 indices (comma-separated list) that best match the input query
+    4. Do not output explanations, just the numbers
 
     Search Query: {query}
     Search Results:
@@ -142,6 +147,7 @@ def filter_results(llm, query, results):
 def _generate_final_string(results, truncate=False):
     """
     Generate a formatted string from the search results for LLM processing.
+    Now includes snippets for GitHub repos and commits for better filtering accuracy.
     """
 
     if truncate:
@@ -149,6 +155,10 @@ def _generate_final_string(results, truncate=False):
         max_title_length = 30
         # Do not use link at all
         max_link_length = 0
+        # Skip snippets when truncating (fallback mode)
+        use_snippets = False
+    else:
+        use_snippets = True
 
     final_str = []
     for i, res in enumerate(results):
@@ -172,7 +182,24 @@ def _generate_final_string(results, truncate=False):
                 else truncated_link
             )
 
-        final_str.append(f"{i+1}. {truncated_link} - {title}")
+        # Build the result line
+        result_line = f"{i+1}. {truncated_link} - {title}"
+        
+        # Add snippet for high-quality sources (GitHub repos and commits)
+        if use_snippets and 'snippet' in res and 'source' in res:
+            source = res.get('source', '')
+            # Only use snippets from GitHub repos and commits (high-quality data)
+            # Skip github_code (just file paths, not useful for filtering)
+            if source in ['github', 'github_commits']:
+                snippet = res['snippet']
+                # Clean and truncate snippet to avoid token overflow
+                snippet_clean = re.sub(r'[^0-9a-zA-Z\-\.\s,;:]', ' ', snippet)
+                max_snippet_length = 150
+                if len(snippet_clean) > max_snippet_length:
+                    snippet_clean = snippet_clean[:max_snippet_length] + "..."
+                result_line += f" | {snippet_clean}"
+
+        final_str.append(result_line)
 
     return "\n".join(s for s in final_str)
 

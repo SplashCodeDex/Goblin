@@ -45,10 +45,10 @@ export function ResultsView({
                     {scrapeState.sources.length > 0 && (
                         <>
                             <Button variant="outline" size="sm" onClick={onDownloadReport} className="border-zinc-800 hover:bg-zinc-800 hover:text-accent">Report</Button>
-                            <Button variant="outline" size="sm" onClick={() => downloadCSV(scrapeState.sources, "sources.csv")} className="border-zinc-800 hover:bg-zinc-800 hover:text-accent font-mono text-[10px]">CSV</Button>
-                            <Button variant="outline" size="sm" onClick={() => downloadJSON(scrapeState.sources, "sources.json")} className="border-zinc-800 hover:bg-zinc-800 hover:text-accent font-mono text-[10px]">JSON</Button>
+                            <Button variant="outline" size="sm" onClick={() => downloadCSV(scrapeState.sources, "sources.csv")} className="border-zinc-800 hover:bg-zinc-800 hover:text-accent font-bold text-[10px] tracking-wider">CSV</Button>
+                            <Button variant="outline" size="sm" onClick={() => downloadJSON(scrapeState.sources, "sources.json")} className="border-zinc-800 hover:bg-zinc-800 hover:text-accent font-bold text-[10px] tracking-wider">JSON</Button>
                             {stix && Object.keys(stix).length > 0 && (
-                                <Button variant="outline" size="sm" onClick={() => downloadJSON(stix, "stix.json")} className="border-zinc-800 hover:bg-zinc-800 hover:text-accent font-mono text-[10px]">STIX</Button>
+                                <Button variant="outline" size="sm" onClick={() => downloadJSON(stix, "stix.json")} className="border-zinc-800 hover:bg-zinc-800 hover:text-accent font-bold text-[10px] tracking-wider">STIX</Button>
                             )}
                         </>
                     )}
@@ -76,7 +76,7 @@ export function ResultsView({
                                     </div>
                                     <div className="flex items-center gap-2 min-w-0">
                                         <Globe className="w-3 h-3 text-zinc-600 shrink-0" />
-                                        <span className="truncate text-zinc-400 font-mono text-[13px]">{item.url}</span>
+                                        <span className="truncate text-zinc-400 font-semibold text-[13px]">{item.url}</span>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 ml-4">

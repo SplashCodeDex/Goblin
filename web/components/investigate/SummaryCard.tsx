@@ -65,7 +65,7 @@ export function SummaryCard({ refined, summary, isAnalyzing = false }: { refined
                 </div>
               )}
             </div>
-            <p className="text-[10px] text-zinc-600 font-mono mt-1 flex items-center gap-2">
+            <p className="text-[10px] text-zinc-600 font-bold mt-1 flex items-center gap-2">
               <span className="w-1 h-3 bg-zinc-800" />
               V2.0 // DEEP_RECOGNITION_SYSTEM
             </p>
@@ -91,7 +91,7 @@ export function SummaryCard({ refined, summary, isAnalyzing = false }: { refined
           <Cpu className="w-4 h-4 text-accent/60 mt-0.5 shrink-0" />
           <div className="space-y-1">
             <div className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.15em]">Refined Analysis Scope</div>
-            <div className="text-[13px] text-zinc-400 font-mono italic leading-relaxed selection:bg-accent/40">
+            <div className="text-[13px] text-zinc-400 font-medium italic leading-relaxed selection:bg-accent/40">
               "{refined}"
             </div>
           </div>
@@ -127,7 +127,7 @@ export function SummaryCard({ refined, summary, isAnalyzing = false }: { refined
             </button>
           </div>
         </div>
-        <div className="text-[9px] text-zinc-700 font-mono tracking-widest uppercase">
+        <div className="text-[9px] text-zinc-700 font-bold tracking-wider uppercase">
           Classification: Level 4 // Goblin Protocol
         </div>
       </div>

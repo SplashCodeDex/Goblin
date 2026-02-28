@@ -5,8 +5,8 @@ export function ArtifactsTable({ data }: { data: Artifact[] }) {
     <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-4 space-y-2">
       {data.map((a, i) => (
         <div key={i} className="text-sm">
-          <span className="text-zinc-400">{a.type}:</span> <span className="font-mono">{a.value}</span>
-          {a.context && <span className="text-zinc-500"> — {a.context}</span>}
+          <span className="text-zinc-500 font-bold text-[11px] uppercase tracking-wider">{a.type}:</span> <span className="font-semibold text-zinc-300">{a.value}</span>
+          {a.context && <span className="text-zinc-500 italic"> — {a.context}</span>}
         </div>
       ))}
     </div>

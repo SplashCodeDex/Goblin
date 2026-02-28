@@ -1,4 +1,4 @@
-import { ExternalLink, Eye, Copy, Check, ShieldAlert, ShieldCheck, ShieldInfo, Terminal } from "lucide-react"
+import { ExternalLink, Eye, Copy, Check, ShieldAlert, ShieldCheck, Shield, Terminal } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -39,7 +39,7 @@ export function ResultsTable(props: {
         const medMatch = text.match(/info|data|dump|breach|security|account|user/g)
 
         if (highMatch) return { level: "HIGH", color: "text-red-500", bg: "bg-red-500/10", border: "border-red-500/20", icon: <ShieldAlert className="w-3.5 h-3.5" /> }
-        if (medMatch) return { level: "MEDIUM", color: "text-amber-500", bg: "bg-amber-500/10", border: "border-amber-500/20", icon: <ShieldInfo className="w-3.5 h-3.5" /> }
+        if (medMatch) return { level: "MEDIUM", color: "text-amber-500", bg: "bg-amber-500/10", border: "border-amber-500/20", icon: <Shield className="w-3.5 h-3.5" /> }
         return { level: "LOW", color: "text-zinc-500", bg: "bg-zinc-500/10", border: "border-zinc-500/20", icon: <ShieldCheck className="w-3.5 h-3.5" /> }
     }
 
@@ -78,7 +78,7 @@ export function ResultsTable(props: {
                                             {item.title}
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[11px] text-zinc-500 truncate font-mono">{item.link}</span>
+                                            <span className="text-[11px] text-zinc-500 truncate font-semibold">{item.link}</span>
                                             <button
                                                 onClick={() => handleCopy(item.link, item.link)}
                                                 className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/5 transition-all"
@@ -96,7 +96,7 @@ export function ResultsTable(props: {
                                         <div className="flex flex-wrap gap-1.5 mt-2">
                                             {item.emails.map(email => (
                                                 <div key={email} className="group/entity flex items-center gap-1.5 rounded-full border border-white/5 bg-zinc-800/50 pl-2.5 pr-1.5 py-0.5 transition-all hover:border-accent/40">
-                                                    <span className="text-[10px] font-mono text-zinc-500 group-hover/entity:text-zinc-300">{email}</span>
+                                                    <span className="text-[10px] font-bold text-zinc-500 group-hover/entity:text-zinc-300">{email}</span>
                                                     <button
                                                         onClick={() => handleCopy(email, email)}
                                                         className="p-1 rounded-full hover:bg-white/10"
@@ -137,7 +137,7 @@ export function ResultsTable(props: {
                                                     <div className="space-y-6 mt-4">
                                                         <div className="p-3 rounded-lg bg-black/40 border border-white/5">
                                                             <div className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Technical Origin</div>
-                                                            <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline text-xs font-mono break-all italic">{item.link}</a>
+                                                            <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline text-xs font-semibold break-all italic">{item.link}</a>
                                                         </div>
                                                         <div className="space-y-2">
                                                             <div className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Intelligence Snippet</div>
@@ -158,7 +158,7 @@ export function ResultsTable(props: {
                                 <div className="flex flex-col items-center gap-3">
                                     <Terminal className="w-8 h-8 text-zinc-800" />
                                     <div className="text-sm font-bold text-zinc-600 uppercase tracking-widest">No Intelligence Nodes Found</div>
-                                    <p className="text-xs text-zinc-700 font-mono">ADJUST PARAMETERS OR EXPAND SCOPE</p>
+                                    <p className="text-xs text-zinc-700 font-bold">ADJUST PARAMETERS OR EXPAND SCOPE</p>
                                 </div>
                             </TableCell>
                         </TableRow>
