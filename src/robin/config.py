@@ -8,6 +8,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL")
+CORS_ALLOW_ORIGINS = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173")
 
 # Tor proxy configuration
 TOR_SOCKS_HOST = os.getenv("TOR_SOCKS_HOST", "127.0.0.1")
@@ -52,7 +53,8 @@ def get_config():
         "TOR_SOCKS_PORT": TOR_SOCKS_PORT,
         "TOR_CONTROL_PORT": TOR_CONTROL_PORT,
         "TOR_PASSWORD": _mask(TOR_PASSWORD),
-        "MAX_SCRAPE_CHARS": MAX_SCRAPE_CHARS
+        "MAX_SCRAPE_CHARS": MAX_SCRAPE_CHARS,
+        "CORS_ALLOW_ORIGINS": CORS_ALLOW_ORIGINS
     }
 
 def _mask(value):
@@ -72,7 +74,7 @@ def update_config(updates):
         if key in [
             "OPENAI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OLLAMA_BASE_URL",
             "GITHUB_TOKEN", "TOR_SOCKS_HOST", "TOR_SOCKS_PORT", "TOR_CONTROL_PORT",
-            "TOR_PASSWORD", "MAX_SCRAPE_CHARS"
+            "TOR_PASSWORD", "MAX_SCRAPE_CHARS", "CORS_ALLOW_ORIGINS"
         ]:
             set_key(env_file, key, str(value))
             # Update global variable in memory (rudimentary reload)

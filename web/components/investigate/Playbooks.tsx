@@ -2,22 +2,31 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, X, Book, Check } from "lucide-react"
+import { Plus, X, Book, Check, Sparkles, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
+import { suggestPlaybooks } from "@/lib/api"
+import { toast } from "@/components/hooks/use-toast"
 
 const DEFAULT_PLAYBOOKS = {
-    "Ransomware investigation": "ransomware gang leak site credentials logs",
-    "Credential leak": "database dump credentials password email combo leak",
-    "Zero-day chatter": "zero day exploit sale PoC CVE leak"
+    "Ransomware Leak Sites": "ransomware gang leak site stolen data credentials",
+    "Credential Markets": "database dump credentials combo list email password",
+    "Exploit Trading": "zero day exploit CVE PoC vulnerability sale",
+    "Malware Infrastructure": "C2 command control malware botnet infrastructure",
+    "Phishing Campaigns": "phishing kit panel credential harvester scam"
 }
 
 export function Playbooks(props: {
     onSelect: (query: string) => void
+    currentQuery?: string
+    currentModel?: string
 }) {
     const [playbooks, setPlaybooks] = useState<Record<string, string>>(DEFAULT_PLAYBOOKS)
     const [newTitle, setNewTitle] = useState("")
     const [newQuery, setNewQuery] = useState("")
     const [open, setOpen] = useState(false)
+    const [suggestOpen, setSuggestOpen] = useState(false)
+    const [suggesting, setSuggesting] = useState(false)
+    const [suggestions, setSuggestions] = useState<Array<{ name: string; query: string }>>([])
 
     useEffect(() => {
         const saved = localStorage.getItem("robin-playbooks")
@@ -46,10 +55,58 @@ export function Playbooks(props: {
         localStorage.setItem("robin-playbooks", JSON.stringify(rest))
     }
 
+    async function handleSuggest() {
+        if (!props.currentModel) {
+            toast({ description: "Please select a model first", variant: "destructive" })
+            return
+        }
+        
+        setSuggesting(true)
+        try {
+            const result = await suggestPlaybooks(
+                props.currentModel, 
+                props.currentQuery || "", 
+                5
+            )
+            setSuggestions(result.suggestions)
+            setSuggestOpen(true)
+            toast({ description: `Generated ${result.suggestions.length} playbook suggestions` })
+        } catch (e: any) {
+            toast({ description: e?.message || "Failed to generate suggestions", variant: "destructive" })
+        } finally {
+            setSuggesting(false)
+        }
+    }
+
+    function saveSuggestion(name: string, query: string) {
+        const updated = { ...playbooks, [name]: query }
+        setPlaybooks(updated)
+        localStorage.setItem("robin-playbooks", JSON.stringify(updated))
+        toast({ description: `Saved playbook: ${name}` })
+    }
+
     return (
         <div className="grid gap-3">
-            <div className="flex items-center justify-between px-1">
-                <div /> {/* Left spacer to align with parent if needed */}
+            <div className="flex items-center justify-between px-1 gap-2">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSuggest}
+                    disabled={suggesting || !props.currentModel}
+                    className="h-7 px-2 text-[10px] text-emerald-500 hover:text-emerald-400 hover:bg-emerald-400/5 font-black uppercase tracking-widest gap-1.5 border border-transparent hover:border-emerald-400/20 transition-all disabled:opacity-50"
+                >
+                    {suggesting ? (
+                        <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            AI Processing...
+                        </>
+                    ) : (
+                        <>
+                            <Sparkles className="w-3 h-3" />
+                            AI Suggest
+                        </>
+                    )}
+                </Button>
                 <Dialog open={open} onOpenChange={setOpen}>
                     <DialogTrigger asChild>
                         <Button
@@ -134,6 +191,68 @@ export function Playbooks(props: {
                     </div>
                 ))}
             </div>
+
+            {/* AI Suggestions Dialog */}
+            <Dialog open={suggestOpen} onOpenChange={setSuggestOpen}>
+                <DialogContent className="bg-zinc-950 border-zinc-800 max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="text-zinc-100 font-bold tracking-tight flex items-center gap-2">
+                            <Sparkles className="w-5 h-5 text-emerald-400" />
+                            AI-Suggested Playbooks
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-3 py-4 max-h-[60vh] overflow-y-auto">
+                        {suggestions.length === 0 ? (
+                            <div className="text-center text-zinc-500 py-8">
+                                No suggestions available
+                            </div>
+                        ) : (
+                            suggestions.map((suggestion, idx) => (
+                                <div key={idx} className="border border-zinc-800 rounded-lg p-4 hover:border-emerald-400/30 transition-all group">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="flex-1">
+                                            <h4 className="text-sm font-black text-emerald-400 mb-2">{suggestion.name}</h4>
+                                            <p className="text-xs text-zinc-500 font-mono italic">QUERY: {suggestion.query}</p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => {
+                                                    props.onSelect(suggestion.query)
+                                                    setSuggestOpen(false)
+                                                    toast({ description: "Playbook query loaded" })
+                                                }}
+                                                className="h-8 px-3 text-[10px] font-bold uppercase tracking-widest text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
+                                            >
+                                                Load
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                onClick={() => saveSuggestion(suggestion.name, suggestion.query)}
+                                                disabled={playbooks.hasOwnProperty(suggestion.name)}
+                                                className="h-8 px-3 text-[10px] font-bold uppercase tracking-widest bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-600"
+                                            >
+                                                <Check className="w-3 h-3 mr-1" />
+                                                {playbooks.hasOwnProperty(suggestion.name) ? "Saved" : "Save"}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    <DialogFooter className="border-t border-zinc-900 pt-4">
+                        <Button
+                            variant="ghost"
+                            onClick={() => setSuggestOpen(false)}
+                            className="text-zinc-500 font-bold uppercase tracking-widest text-[10px] hover:text-zinc-300"
+                        >
+                            Close
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

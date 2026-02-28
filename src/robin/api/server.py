@@ -10,8 +10,8 @@ from sse_starlette.sse import EventSourceResponse
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-from robin.llm import get_llm, refine_query, filter_results, generate_summary, missing_model_env
-from robin.search import get_search_results, is_tor_running
+from robin.llm import get_llm, refine_query, filter_results, generate_summary, missing_model_env, suggest_playbooks
+from robin.search import get_search_results, stream_search_results, is_tor_running
 from robin.scrape import scrape_multiple, scrape_single
 from robin.database import (
     save_run, load_runs,
@@ -35,9 +35,8 @@ async def startup_event():
 _SUMMARY_CACHE: Dict[str, Dict[str, str]] = {}
 
 # CORS configuration from environment (comma-separated), defaults to * for dev
-import os
-_origins = os.getenv("CORS_ALLOW_ORIGINS", "*")
-allow_origins = [o.strip() for o in _origins.split(",") if o.strip()] if _origins else ["*"]
+from robin.config import CORS_ALLOW_ORIGINS
+allow_origins = [o.strip() for o in CORS_ALLOW_ORIGINS.split(",") if o.strip()] if CORS_ALLOW_ORIGINS else ["http://localhost:3000"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
@@ -143,6 +142,108 @@ async def api_search(req: SearchReq):
         results.extend(gh_commit_results)
 
     return {"results": results}
+
+
+@app.get("/api/search_stream")
+async def api_search_stream(
+    query: str,
+    sources: str = "darkweb,github",
+    max_results: int = 50,
+    min_stars: int = 0,
+    min_forks: int = 0
+):
+    import asyncio
+    import json
+    source_list = [s.strip() for s in sources.split(",") if s.strip()]
+
+    async def event_generator():
+        try:
+            yield {
+                "event": "status",
+                "data": json.dumps({"message": f"Initializing tactical scan for: {query}"})
+            }
+
+            # Dark Web Search
+            if "darkweb" in source_list:
+                yield {
+                    "event": "status",
+                    "data": json.dumps({"message": "Deploying SOCKS5 proxies to Onion space..."})
+                }
+
+                loop = asyncio.get_running_loop()
+                # Run the sync generator in a loop using run_in_executor
+                gen = stream_search_results(query, max_results=max_results)
+
+                while True:
+                    try:
+                        # We use a wrapper function to call next(gen)
+                        res = await loop.run_in_executor(None, next, gen)
+                        yield {
+                            "event": "result",
+                            "data": json.dumps(res)
+                        }
+                    except StopIteration:
+                        break
+                    except Exception as e:
+                        logger.error(f"Darkweb stream item error: {e}")
+                        break
+
+            # GitHub Search (Batch yielded as stream)
+            if "github" in source_list:
+                yield {
+                    "event": "status",
+                    "data": json.dumps({"message": "Querying GitHub Intelligence..."})
+                }
+                from robin.github_search import search_github
+                gh_results = await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    search_github,
+                    query,
+                    max_results,
+                    min_stars,
+                    min_forks
+                )
+                for res in gh_results:
+                    yield {
+                        "event": "result",
+                        "data": json.dumps(res)
+                    }
+
+            # GitHub Code Search
+            if "github_code" in source_list:
+                yield {
+                    "event": "status",
+                    "data": json.dumps({"message": "Checking GitHub Code snippets..."})
+                }
+                from robin.github_search import search_github_code
+                gh_code_results = await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    search_github_code,
+                    query,
+                    max_results
+                )
+                for res in gh_code_results:
+                    yield {
+                        "event": "result",
+                        "data": json.dumps(res)
+                    }
+
+            yield {
+                "event": "status",
+                "data": json.dumps({"message": "Tactical scan complete."})
+            }
+            yield {
+                "event": "done",
+                "data": json.dumps({"status": "complete"})
+            }
+        except Exception as e:
+            logger.error(f"Search stream fatal error: {e}", exc_info=True)
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": str(e)})
+            }
+
+    return EventSourceResponse(event_generator())
 
 
 class FilterReq(BaseModel):
@@ -253,7 +354,7 @@ async def api_summary(req: SummaryReq):
     attrs = []
     cat_map = {
         "ipv4": "ip-src",
-        "ipv6": "ip-src", 
+        "ipv6": "ip-src",
         "domains": "domain",
         "emails": "email-src",
         "btc": "btc",
@@ -328,7 +429,7 @@ class ExtractReq(BaseModel):
 @app.post("/api/extract")
 async def api_extract(req: ExtractReq) -> Dict[str, Any]:
     artifacts = []
-    
+
     # Comprehensive regex patterns for artifact extraction
     patterns = {
         "email": re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"),
@@ -343,25 +444,25 @@ async def api_extract(req: ExtractReq) -> Dict[str, Any]:
         "sha256": re.compile(r"\b[a-fA-F0-9]{64}\b"),
         "cve": re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE),
     }
-    
+
     for url, content in req.scraped.items():
         # Extract standard patterns
         for artifact_type, pattern in patterns.items():
             for match in pattern.findall(content):
                 artifacts.append({"type": artifact_type, "value": match, "context": url})
-        
+
         # Extract email:password combinations
         email_pass_pattern = re.compile(r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\s*[:;,\s]+\s*([^\s]{4,})")
         for email, password in email_pass_pattern.findall(content):
             if len(password) >= 4 and len(password) <= 128:
                 artifacts.append({"type": "email_password", "value": f"{email}:{password}", "context": url})
-        
+
         # Extract API keys (common patterns)
         api_pattern = re.compile(r"(?:api[_-]?key|apikey|api[_-]?token|access[_-]?token|secret[_-]?key)['\"]?\s*[:=]\s*['\"]?([a-zA-Z0-9_\-]{20,256})['\"]?", re.IGNORECASE)
         for api_key in api_pattern.findall(content):
             if len(api_key) >= 20 and len(api_key) <= 256 and not re.match(r'^[0-9]+$', api_key):
                 artifacts.append({"type": "api_key", "value": api_key, "context": url})
-    
+
     return {"artifacts": artifacts}
 
 
@@ -414,4 +515,37 @@ async def api_update_config(req: ConfigUpdateReq):
         return {"status": "ok"}
     except Exception as e:
         logger.error(f"Failed to update config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class PlaybookSuggestReq(BaseModel):
+    model: str
+    context_query: str = ""
+    max_suggestions: int = 5
+
+
+class PlaybookSuggestResp(BaseModel):
+    suggestions: List[Dict[str, str]]
+
+
+@app.post("/api/suggest_playbooks", response_model=PlaybookSuggestResp)
+async def api_suggest_playbooks(req: PlaybookSuggestReq):
+    """
+    Generate AI-suggested investigation playbooks based on optional context query.
+    Returns a list of playbook suggestions with 'name' and 'query' fields.
+    """
+    missing = missing_model_env(req.model)
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing env: {', '.join(missing)}")
+    
+    try:
+        llm = get_llm(req.model)
+        suggestions = suggest_playbooks(
+            llm, 
+            context_query=req.context_query, 
+            max_suggestions=min(req.max_suggestions, 10)  # Cap at 10 for safety
+        )
+        return {"suggestions": suggestions}
+    except Exception as e:
+        logger.error(f"Error in api_suggest_playbooks: {type(e)} - {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

@@ -110,6 +110,84 @@ def _clean_onion_url(url: str) -> str:
     return url
 
 
+def _extract_snippet_from_element(anchor_elem) -> str:
+    """
+    Extract a description/snippet from the context around an anchor element.
+
+    Tries multiple strategies to find relevant snippet text:
+    1. Look for common snippet class names (description, snippet, summary, excerpt)
+    2. Check for <dd> tags (Torch-style dt/dd pairs)
+    3. Find <p> tags in the parent container
+    4. Use next sibling text
+    5. Fallback to parent container text (excluding link text)
+
+    Returns: Cleaned snippet text (max 200 chars) or empty string
+    """
+    snippet = ""
+
+    try:
+        # Get the parent container (div, li, article, etc.)
+        parent = anchor_elem.find_parent(['div', 'li', 'article', 'section', 'dt', 'tr', 'td'])
+
+        if not parent:
+            return ""
+
+        # Strategy 1: Look for elements with snippet-related classes
+        for class_name in ['description', 'snippet', 'summary', 'excerpt', 'desc', 'abstract']:
+            elem = parent.find(class_=class_name)
+            if elem:
+                snippet = elem.get_text(strip=True)
+                if snippet:
+                    break
+
+        # Strategy 2: For dt/dd structure (Torch pattern)
+        if not snippet and parent.name == 'dt':
+            dd = parent.find_next_sibling('dd')
+            if dd:
+                snippet = dd.get_text(strip=True)
+
+        # Strategy 3: Look for <p> tags in parent
+        if not snippet:
+            p_tag = parent.find('p')
+            if p_tag:
+                snippet = p_tag.get_text(strip=True)
+
+        # Strategy 4: Check next sibling of anchor
+        if not snippet:
+            next_sibling = anchor_elem.find_next_sibling()
+            if next_sibling and next_sibling.name in ['p', 'span', 'div', 'dd']:
+                snippet = next_sibling.get_text(strip=True)
+
+        # Strategy 5: Fallback - use parent text excluding link text
+        if not snippet:
+            parent_text = parent.get_text(separator=' ', strip=True)
+            link_text = anchor_elem.get_text(strip=True)
+            # Remove link text from parent text
+            if link_text and link_text in parent_text:
+                snippet = parent_text.replace(link_text, '', 1).strip()
+            else:
+                snippet = parent_text
+
+        # Clean the snippet
+        if snippet:
+            # Remove URLs from snippet
+            snippet = re.sub(r'https?://[^\s]+', '', snippet)
+            snippet = re.sub(r'[a-z2-7]{16,56}\.onion[^\s]*', '', snippet, flags=re.IGNORECASE)
+            # Remove excessive whitespace
+            snippet = re.sub(r'\s+', ' ', snippet).strip()
+            # Remove common noise patterns
+            snippet = re.sub(r'^[\[\(\{<].*?[\]\)\}>]\s*', '', snippet)  # Remove leading brackets
+            # Truncate to 200 chars
+            if len(snippet) > 200:
+                snippet = snippet[:200].rsplit(' ', 1)[0] + '...'
+
+    except Exception as e:
+        logger.debug(f"snippet extraction error: {e}")
+        snippet = ""
+
+    return snippet
+
+
 def _extract_onions_from_soup(soup: BeautifulSoup) -> list:
     links = []
     seen = set()
@@ -133,7 +211,14 @@ def _extract_onions_from_soup(soup: BeautifulSoup) -> list:
                         cleaned = "http://" + cleaned[len("https://"):]
                     if cleaned and cleaned not in seen:
                         seen.add(cleaned)
-                        links.append({"title": title, "link": cleaned})
+                        # Extract snippet from the surrounding context
+                        snippet = _extract_snippet_from_element(a)
+                        links.append({
+                            "title": title,
+                            "link": cleaned,
+                            "snippet": snippet,
+                            "source": "darkweb"
+                        })
         except Exception as e:
             logger.debug(f"link-parse error: {e}")
             continue
@@ -197,7 +282,7 @@ def _ahmia_handler(session_get, base_url, request_timeout, max_pages=2, max_per_
     dedup = []
     seen = set()
     for item in collected:
-        canon = _canonicalize_url(item["link"]) 
+        canon = _canonicalize_url(item["link"])
         if canon not in seen:
             seen.add(canon)
             dedup.append(item)
@@ -277,7 +362,7 @@ def _generic_engine_handler(session_get, base_url, request_timeout, max_pages=1,
     dedup = []
     seen = set()
     for item in collected:
-        canon = _canonicalize_url(item["link"]) 
+        canon = _canonicalize_url(item["link"])
         if canon not in seen:
             seen.add(canon)
             dedup.append(item)
@@ -382,3 +467,60 @@ def get_search_results(refined_query, max_workers=5, max_results=None, request_t
     if use_cache:
         _cache_put("search", cache_key, unique_results)
     return unique_results
+
+
+def stream_search_results(refined_query, max_workers=5, max_results=None, request_timeout=30):
+    """
+    Generator version of get_search_results that yields unique results as they are found.
+    """
+    seen_links = set()
+    results_count = 0
+
+    endpoints = list(SEARCH_ENGINE_ENDPOINTS)
+    # Use health scores if available
+    try:
+        health = {e: _ENGINE_HEALTH.get(e, 0) for e in endpoints}
+    except NameError:
+        health = {e: 0 for e in endpoints}
+
+    endpoints.sort(key=lambda e: (health.get(e, 0) + random.random() * 0.1), reverse=True)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_endpoint = {
+            executor.submit(fetch_search_results, endpoint, refined_query, request_timeout): endpoint
+            for endpoint in endpoints
+        }
+        for future in as_completed(future_to_endpoint):
+            endpoint = future_to_endpoint[future]
+            try:
+                result_urls = future.result()
+                engine_yielded = 0
+                for res in result_urls:
+                    link = res.get("link")
+                    canon = _canonicalize_url(link)
+                    if canon not in seen_links:
+                        seen_links.add(canon)
+                        results_count += 1
+                        engine_yielded += 1
+                        yield res
+                        if max_results and results_count >= max_results:
+                            return
+
+                # Update health score
+                try:
+                    score = _ENGINE_HEALTH.get(endpoint, 0.0)
+                    if engine_yielded > 0:
+                        score += 1.0
+                    else:
+                        score -= 0.5
+                    score = max(-5.0, min(5.0, score))
+                    _ENGINE_HEALTH[endpoint] = score
+                except NameError:
+                    pass
+            except Exception as e:
+                logger.debug(f"engine error {endpoint}: {e}")
+
+    try:
+        _save_engine_health(_ENGINE_HEALTH)
+    except NameError:
+        pass

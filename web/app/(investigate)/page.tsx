@@ -46,6 +46,7 @@ export default function InvestigationPage() {
   const [keywords, setKeywords] = useState<string[]>([])
   const [hits, setHits] = useState<{ keyword: string; url: string }[]>([])
   const [searchInProgress, setSearchInProgress] = useState(false)
+  const [searchLogs, setSearchLogs] = useState<string[]>([])
 
   // Watchlist logic
   useEffect(() => {
@@ -76,27 +77,48 @@ export default function InvestigationPage() {
   async function onSearch() {
     try {
       setSearchInProgress(true)
+      setResults([])
+      setFilteredRes([])
+      setSelectedMap({})
+      setSearchLogs(["Initializing Tactical Intelligence Feed..."])
 
       const sources = ["darkweb", "github", "github_code"]
       if (includeCommits) sources.push("github_commits")
 
-      const res = await search(query, threads, maxResults, requestTimeout, useCache, loadCachedOnly, sources, minStars, minForks)
-      setResults(res.results)
-      setFilteredRes(res.results)
-      toast({ description: "Search done" })
+      // Import the helper directly or use the one we'll add to lib/api
+      const { searchStreamUrl } = await import("@/lib/api")
+      const url = searchStreamUrl(query, sources, maxResults, minStars, minForks)
+      const eventSource = new EventSource(url)
 
-      // Check health/model status in background
-      await checkHealth()
-      try {
-        const ms = await modelStatus(model)
-        setStatus(s => ({ ...s, modelReady: ms.ready, missing: ms.missing }))
-      } catch (e: any) {
-        console.error("Failed to check model status:", e)
-      }
+      eventSource.addEventListener("status", (e) => {
+        const data = JSON.parse(e.data)
+        setSearchLogs(prev => [...prev.slice(-4), data.message])
+      })
+
+      eventSource.addEventListener("result", (e) => {
+        const data = JSON.parse(e.data) as SearchResult
+        setResults(prev => [...prev, data])
+        setFilteredRes(prev => [...prev, data])
+        setSelectedMap(prev => ({ ...prev, [data.link]: true }))
+      })
+
+      eventSource.addEventListener("done", () => {
+        eventSource.close()
+        setSearchInProgress(false)
+        setSearchLogs(prev => [...prev, "Scan complete."])
+        toast({ description: "Tactical scan complete" })
+        checkHealth()
+      })
+
+      eventSource.addEventListener("error", (e) => {
+        console.error("Search stream error:", e)
+        eventSource.close()
+        setSearchInProgress(false)
+        toast({ description: "Search stream interrupted", variant: "destructive" })
+      })
 
     } catch (e: any) {
       toast({ description: e?.message || "Search failed", variant: "destructive" })
-    } finally {
       setSearchInProgress(false)
     }
   }
@@ -142,7 +164,7 @@ export default function InvestigationPage() {
         } catch (e: any) {
           console.error("Failed to extract artifacts:", e)
         }
-        
+
         // Generate summary using streaming SSE
         try {
           // First cache the scraped content
@@ -155,20 +177,20 @@ export default function InvestigationPage() {
             throw new Error(`Failed to cache scraped content: ${cacheRes.status}`)
           }
           const { id } = await cacheRes.json()
-          
+
           // Now stream the summary
           const eventSource = new EventSource(`${API_BASE}/summary_stream?model=${encodeURIComponent(model)}&query=${encodeURIComponent(query)}&id=${id}`)
           let streamedSummary = ""
-          
+
           eventSource.onmessage = (event) => {
             streamedSummary += event.data
             setSummaryText(streamedSummary)
           }
-          
+
           eventSource.onerror = (error) => {
             console.error("SSE error:", error)
             eventSource.close()
-            
+
             // Fallback to batch summary if streaming fails
             fetch(`${API_BASE}/summary`, {
               method: "POST",
@@ -186,7 +208,7 @@ export default function InvestigationPage() {
                 toast({ description: "Summary generation failed", variant: "destructive" })
               })
           }
-          
+
           eventSource.addEventListener("close", () => {
             eventSource.close()
             // After streaming completes, get artifacts, STIX, and MISP
@@ -217,17 +239,17 @@ export default function InvestigationPage() {
           scraped[r.url] = r.content
           setScrapeState(s => ({ ...s, percent: Math.round((i + 1) / targets.length * 100) }))
         }
-        
+
         const sources = Object.entries(scraped).map(([url, content]) => ({ url, excerpt: content.slice(0, 240) }))
         setScrapeState({ inProgress: false, percent: 100, sources })
-        
+
         try {
           const extract = await extractArtifacts(scraped)
           setArtifacts(extract.artifacts || [])
         } catch (e: any) {
           console.error("Failed to extract artifacts:", e)
         }
-        
+
         // Batch summary generation
         try {
           const summaryRes = await fetch(`${API_BASE}/summary`, {
@@ -348,12 +370,13 @@ ${artifacts.map(a => `- ${a.type}: ${a.value}`).join("\n")}
               hasQuery={!!query.trim()}
               searchInProgress={searchInProgress}
               resultsCount={results.length}
-              filteredCount={filteredRes.length}
+              filteredCount={filteredRes.filter(it => selectedMap[it.link]).length}
               scraping={{ inProgress: scrapeState.inProgress, percent: scrapeState.percent }}
               hasSummary={!!summaryText}
               onSearch={onSearch}
               onFilter={onFilter}
               onScrape={onScrape}
+              searchLogs={searchLogs}
             />
           </Card>
 

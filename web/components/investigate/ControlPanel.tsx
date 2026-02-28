@@ -44,7 +44,11 @@ export function ControlPanel({ model, setModel, query, setQuery, keywords, setKe
                         <Command className="w-3.5 h-3.5 text-zinc-500" />
                         <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Tactical Playbooks</span>
                     </div>
-                    <Playbooks onSelect={(q) => { setQuery(q); toast({ description: "Playbook loaded" }) }} />
+                    <Playbooks 
+                        onSelect={(q) => { setQuery(q); toast({ description: "Playbook loaded" }) }} 
+                        currentQuery={query}
+                        currentModel={model}
+                    />
                 </section>
 
                 <Separator className="bg-white/5" />

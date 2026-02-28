@@ -13,8 +13,9 @@ export function ProgressSteps(props: {
   onSearch: () => Promise<void>
   onFilter: () => Promise<void>
   onScrape: () => Promise<void>
+  searchLogs?: string[]
 }) {
-  const { hasQuery, searchInProgress, resultsCount, filteredCount, scraping, hasSummary, onSearch, onFilter, onScrape } = props
+  const { hasQuery, searchInProgress, resultsCount, filteredCount, scraping, hasSummary, onSearch, onFilter, onScrape, searchLogs = [] } = props
   return (
     <div className="grid md:grid-cols-3 gap-6 relative">
       {/* Connecting lines for desktop */}
@@ -31,16 +32,32 @@ export function ProgressSteps(props: {
           </div>
           <span className="text-xs font-mono text-zinc-500">{resultsCount} found</span>
         </div>
-        <Button
-          size="sm"
-          className="w-full"
-          onClick={onSearch}
-          disabled={!hasQuery || searchInProgress}
-          variant={resultsCount > 0 ? "outline" : "default"}
-        >
-          {searchInProgress ? "Searching..." : resultsCount > 0 ? "Re-run Search" : "Run Search"}
-        </Button>
-        {!hasQuery && <p className="text-xs text-center text-zinc-500">Enter a query to search</p>}
+        <div className="relative">
+          {searchInProgress && (
+            <div className="absolute inset-0 bg-blue-500/5 pointer-events-none overflow-hidden rounded-lg -z-10">
+              <div className="absolute inset-0 animate-sonar border border-blue-500/30 rounded-lg" />
+            </div>
+          )}
+          <Button
+            size="sm"
+            className="w-full relative z-10"
+            onClick={onSearch}
+            disabled={!hasQuery || searchInProgress}
+            variant={resultsCount > 0 ? "outline" : "default"}
+          >
+            {searchInProgress ? "Scanning..." : resultsCount > 0 ? "Re-run Scan" : "Run Tactical Scan"}
+          </Button>
+        </div>
+        {searchInProgress && searchLogs.length > 0 && (
+          <div className="mt-1 space-y-0.5 border-t border-zinc-800 pt-2">
+            {searchLogs.map((log, i) => (
+              <div key={i} className="text-[10px] font-mono text-blue-400/80 leading-tight truncate animate-in fade-in slide-in-from-left-1 fill-mode-both">
+                {`> ${log}`}
+              </div>
+            ))}
+          </div>
+        )}
+        {!hasQuery && !searchInProgress && <p className="text-xs text-center text-zinc-500">Enter a query to search</p>}
       </div>
 
       {/* Step 2: Filter */}

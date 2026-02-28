@@ -185,12 +185,15 @@ def _generate_final_string(results, truncate=False):
         # Build the result line
         result_line = f"{i+1}. {truncated_link} - {title}"
         
-        # Add snippet for high-quality sources (GitHub repos and commits)
-        if use_snippets and 'snippet' in res and 'source' in res:
+        # Add snippet for high-quality sources (GitHub repos, commits, and darkweb)
+        if use_snippets and 'snippet' in res and res.get('snippet'):
             source = res.get('source', '')
-            # Only use snippets from GitHub repos and commits (high-quality data)
+            # Use snippets from:
+            # - GitHub repos (repository descriptions)
+            # - GitHub commits (commit messages)
+            # - Darkweb (extracted descriptions from search results)
             # Skip github_code (just file paths, not useful for filtering)
-            if source in ['github', 'github_commits']:
+            if source in ['github', 'github_commits', 'darkweb']:
                 snippet = res['snippet']
                 # Clean and truncate snippet to avoid token overflow
                 snippet_clean = re.sub(r'[^0-9a-zA-Z\-\.\s,;:]', ' ', snippet)
@@ -387,3 +390,145 @@ def generate_summary(llm, query, content):
     """
     result = generate_summary_and_artifacts(llm, query, content)
     return result.get("summary", "")
+
+
+def suggest_playbooks(llm, context_query: str = "", max_suggestions: int = 5):
+    """
+    Generate AI-suggested investigation playbooks based on optional context.
+    
+    Args:
+        llm: The language model instance
+        context_query: Optional user query to provide context for suggestions
+        max_suggestions: Maximum number of playbooks to suggest (default 5)
+    
+    Returns:
+        List of dicts with 'name' and 'query' keys
+    """
+    import json as _json
+    
+    system_prompt = """
+    You are a Cybercrime Threat Intelligence Expert with deep knowledge of OSINT investigation methodologies.
+    Your task is to suggest tactical investigation playbooks for dark web and GitHub threat intelligence gathering.
+    
+    Each playbook should be:
+    - Specific and actionable
+    - Focused on a particular threat scenario or investigation type
+    - Include optimized search queries that work well with dark web search engines and GitHub
+    
+    Common investigation scenarios include:
+    - Ransomware campaigns and leak sites
+    - Credential dumps and database leaks
+    - Zero-day exploits and vulnerability trading
+    - Malware family tracking
+    - C2 infrastructure hunting
+    - Phishing kit distribution
+    - Crypto fraud and scam operations
+    - Data broker markets
+    - Insider threat indicators
+    - APT group activity monitoring
+    
+    Rules:
+    1. Generate {max_suggestions} diverse playbook suggestions
+    2. Each playbook must have a concise name (2-5 words, tactical style)
+    3. Each query should be 4-10 keywords optimized for search engines
+    4. Queries should NOT use logical operators (AND, OR, NOT)
+    5. Focus on current, realistic threat scenarios
+    6. If context_query is provided, include related playbooks but also suggest diverse alternatives
+    
+    Output Format (JSON array):
+    [
+        {{"name": "Playbook Name", "query": "search query keywords"}},
+        {{"name": "Another Playbook", "query": "other keywords"}}
+    ]
+    
+    Context Query: {context_query}
+    
+    OUTPUT (valid JSON array only, no markdown, no explanations):
+    """
+    
+    prompt_template = ChatPromptTemplate([
+        ("system", system_prompt),
+        ("user", "Generate {max_suggestions} tactical playbook suggestions.")
+    ])
+    
+    chain = prompt_template | llm | StrOutputParser()
+    
+    try:
+        response = chain.invoke({
+            "context_query": context_query or "general threat intelligence",
+            "max_suggestions": max_suggestions
+        })
+        
+        # Try to extract JSON from response (handle cases where LLM adds markdown code blocks)
+        response_clean = response.strip()
+        
+        # Remove markdown code blocks if present
+        if response_clean.startswith("```"):
+            # Extract content between ``` markers
+            lines = response_clean.split('\n')
+            response_clean = '\n'.join(lines[1:-1]) if len(lines) > 2 else response_clean
+            response_clean = response_clean.replace("```json", "").replace("```", "").strip()
+        
+        # Parse JSON
+        playbooks = _json.loads(response_clean)
+        
+        # Validate structure
+        if not isinstance(playbooks, list):
+            raise ValueError("Response is not a list")
+        
+        # Ensure each playbook has required fields
+        validated = []
+        for pb in playbooks[:max_suggestions]:
+            if isinstance(pb, dict) and 'name' in pb and 'query' in pb:
+                validated.append({
+                    'name': str(pb['name']).strip(),
+                    'query': str(pb['query']).strip()
+                })
+        
+        if not validated:
+            # Fallback to default suggestions
+            return _get_fallback_playbooks(context_query)
+        
+        return validated
+        
+    except Exception as e:
+        print(f"Error generating playbook suggestions: {e}. Using fallback.")
+        return _get_fallback_playbooks(context_query)
+
+
+def _get_fallback_playbooks(context_query: str = ""):
+    """
+    Fallback playbooks when LLM generation fails.
+    Provides context-aware defaults based on query keywords.
+    """
+    # Default diverse playbooks
+    fallback = [
+        {"name": "Ransomware Leak Sites", "query": "ransomware gang leak site stolen data credentials"},
+        {"name": "Credential Markets", "query": "database dump credentials combo list email password"},
+        {"name": "Exploit Trading", "query": "zero day exploit CVE PoC vulnerability sale"},
+        {"name": "Malware Infrastructure", "query": "C2 command control malware botnet infrastructure"},
+        {"name": "Phishing Campaigns", "query": "phishing kit panel credential harvester scam"},
+    ]
+    
+    # If context query provided, try to add a context-specific playbook
+    if context_query:
+        context_lower = context_query.lower()
+        
+        # Simple keyword matching for context-aware suggestions
+        context_playbooks = {
+            "ransomware": {"name": "Ransomware Attribution", "query": "ransomware gang affiliate bitcoin payment wallet"},
+            "credential": {"name": "Credential Exposure", "query": "leaked credentials employee corporate database breach"},
+            "malware": {"name": "Malware Analysis", "query": "malware sample hash analysis reverse engineering"},
+            "phishing": {"name": "Phishing Infrastructure", "query": "phishing domain hosting panel kit distribution"},
+            "apt": {"name": "APT Tracking", "query": "APT advanced persistent threat campaign indicators"},
+            "crypto": {"name": "Crypto Fraud", "query": "cryptocurrency scam fraud wallet drainer rug pull"},
+            "vulnerability": {"name": "Vulnerability Intel", "query": "vulnerability CVE exploit PoC patch bypass"},
+        }
+        
+        for keyword, playbook in context_playbooks.items():
+            if keyword in context_lower:
+                # Insert context-specific playbook at the beginning
+                fallback.insert(0, playbook)
+                break
+    
+    return fallback[:5]
