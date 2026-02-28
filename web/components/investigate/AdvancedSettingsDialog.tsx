@@ -58,15 +58,15 @@ export function AdvancedSettingsDialog(props: {
           </div>
           <div className="flex items-center gap-2">
             <Checkbox id="loadCachedOnly" checked={loadCachedOnly} onCheckedChange={(v)=> setLoadCachedOnly(Boolean(v))} />
-            <Label htmlFor="loadCachedOnly" className="text-sm">Load cached only (Offline mode)</label>
+            <Label htmlFor="loadCachedOnly" className="text-sm">Load cached only (Offline mode)</Label>
           </div>
           <div className="flex items-center gap-2">
             <Checkbox id="translate" checked={translate} onCheckedChange={(v)=> setTranslate(Boolean(v))} />
-            <Label htmlFor="translate" className="text-sm">Auto-translate non-English content</label>
+            <Label htmlFor="translate" className="text-sm">Auto-translate non-English content</Label>
           </div>
           <div className="flex items-center gap-2">
             <Checkbox id="detailed" checked={!!detailed} onCheckedChange={(v)=> setDetailed?.(Boolean(v))} />
-            <Label htmlFor="detailed" className="text-sm">Detailed per-URL progress (sequential)</label>
+            <Label htmlFor="detailed" className="text-sm">Detailed per-URL progress (sequential)</Label>
           </div>
           <div className="grid gap-2">
             <label className="text-sm font-semibold">GitHub Filters</label>
@@ -82,7 +82,7 @@ export function AdvancedSettingsDialog(props: {
             </div>
             <div className="flex items-center gap-2 mt-2">
               <Checkbox id="includeCommits" checked={props.includeCommits} onCheckedChange={(v)=> props.setIncludeCommits(Boolean(v))} />
-              <Label htmlFor="includeCommits" className="text-sm">Search Commit History (Secrets)</label>
+              <Label htmlFor="includeCommits" className="text-sm">Search Commit History (Secrets)</Label>
             </div>
           </div>
           <DialogFooter>
