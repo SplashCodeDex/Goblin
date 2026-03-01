@@ -83,19 +83,40 @@ def refine_query(llm, user_input):
     return chain.invoke({"query": user_input})
 
 
-def filter_results(llm, query, results):
+def filter_results(llm, query, results, maintain_diversity=True, max_results=20):
+    """
+    Filter search results using LLM with optional source diversity preservation.
+    
+    Args:
+        llm: Language model instance
+        query: Search query
+        results: List of search result dicts
+        maintain_diversity: If True, maintains proportional representation from each source
+        max_results: Maximum number of results to return (default 20)
+    
+    Returns:
+        Filtered list of results
+    """
     if not results:
         return []
+    
+    if maintain_diversity:
+        return _filter_with_diversity(llm, query, results, max_results)
+    else:
+        return _filter_top_n(llm, query, results, max_results)
 
+
+def _filter_top_n(llm, query, results, max_results=20):
+    """Original filter: select top N overall results regardless of source."""
     system_prompt = """
     You are a Cybercrime Threat Intelligence Expert. You are given a search query and a list of search results.
     Each result contains: index, link, title, and optionally a snippet (description or context).
-    Your task is to select the Top 20 most relevant results that best match the search query for further investigation.
+    Your task is to select the Top {max_results} most relevant results that best match the search query for further investigation.
     
     Rules:
     1. Analyze both the title AND the snippet (when available) to determine relevance
     2. Prioritize results where the snippet provides concrete evidence of relevance
-    3. Output ONLY the top 20 indices (comma-separated list) that best match the input query
+    3. Output ONLY the top {max_results} indices (comma-separated list) that best match the input query
     4. Do not output explanations, just the numbers
 
     Search Query: {query}
@@ -109,19 +130,19 @@ def filter_results(llm, query, results):
     )
     chain = prompt_template | llm | StrOutputParser()
     try:
-        result_indices = chain.invoke({"query": query, "results": final_str})
+        result_indices = chain.invoke({"query": query, "results": final_str, "max_results": max_results})
     except Exception as e:
         print(
             f"LLM error during filtering: {e}. Retrying with truncated titles only."
         )
         final_str = _generate_final_string(results, truncate=True)
         try:
-            result_indices = chain.invoke({"query": query, "results": final_str})
+            result_indices = chain.invoke({"query": query, "results": final_str, "max_results": max_results})
         except Exception as e2:
             print(f"LLM error on retry: {e2}. Falling back to first results.")
             result_indices = ""
 
-    # Safely parse up to 20 indices from the model output
+    # Safely parse up to max_results indices from the model output
     import re as _re
     nums = []
     if isinstance(result_indices, str):
@@ -133,15 +154,73 @@ def filter_results(llm, query, results):
         if 1 <= n <= len(results) and n not in seen:
             picked.append(n)
             seen.add(n)
-        if len(picked) >= 20:
+        if len(picked) >= max_results:
             break
 
     if not picked:
-        picked = list(range(1, min(20, len(results)) + 1))
+        picked = list(range(1, min(max_results, len(results)) + 1))
 
     top_results = [results[i - 1] for i in picked]
 
     return top_results
+
+
+def _filter_with_diversity(llm, query, results, max_results=20):
+    """
+    Diversity-aware filter: maintains proportional representation from each source.
+    This prevents one source from dominating filtered results.
+    """
+    # Group results by source
+    by_source = {}
+    for idx, res in enumerate(results):
+        source = res.get('source', 'unknown')
+        if source not in by_source:
+            by_source[source] = []
+        by_source[source].append((idx, res))
+    
+    # Calculate how many results to pick from each source
+    total_results = len(results)
+    source_counts = {s: len(items) for s, items in by_source.items()}
+    
+    # Proportional allocation based on source representation
+    per_source_limit = {}
+    for source, count in source_counts.items():
+        proportion = count / total_results
+        limit = max(1, int(max_results * proportion))  # At least 1 per source
+        per_source_limit[source] = limit
+    
+    # Adjust if total exceeds max_results due to rounding
+    total_allocated = sum(per_source_limit.values())
+    if total_allocated > max_results:
+        # Reduce from largest allocations first
+        sorted_sources = sorted(per_source_limit.items(), key=lambda x: x[1], reverse=True)
+        reduction_needed = total_allocated - max_results
+        for source, _ in sorted_sources:
+            if reduction_needed <= 0:
+                break
+            if per_source_limit[source] > 1:
+                per_source_limit[source] -= 1
+                reduction_needed -= 1
+    
+    # Filter each source separately
+    final_results = []
+    for source, items in by_source.items():
+        limit = per_source_limit.get(source, 1)
+        source_results = [res for idx, res in items]
+        
+        if len(source_results) <= limit:
+            # If source has fewer results than limit, take all
+            final_results.extend(source_results)
+        else:
+            # Use LLM to filter within this source
+            filtered = _filter_top_n(llm, query, source_results, limit)
+            final_results.extend(filtered)
+    
+    # Sort by original order (optional - could also rank by relevance)
+    result_map = {id(res): idx for idx, res in enumerate(results)}
+    final_results.sort(key=lambda r: result_map.get(id(r), 99999))
+    
+    return final_results[:max_results]
 
 
 def _generate_final_string(results, truncate=False):

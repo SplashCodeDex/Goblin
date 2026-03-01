@@ -91,56 +91,92 @@ class SearchReq(BaseModel):
     max_results: int = 50
     min_stars: int = 0
     min_forks: int = 0
+    source_weights: Dict[str, float] = None  # Will use DEFAULT_SOURCE_WEIGHTS if None
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.source_weights is None:
+            from robin.config import DEFAULT_SOURCE_WEIGHTS
+            self.source_weights = DEFAULT_SOURCE_WEIGHTS.copy()
 
 
 @app.post("/api/search")
 async def api_search(req: SearchReq):
     import asyncio
+    
+    # Validate and normalize source weights
+    weights = req.source_weights.copy()
+    
+    # Only keep weights for sources that are actually requested
+    active_weights = {k: v for k, v in weights.items() if k in req.sources}
+    
+    # Normalize weights to sum to 1.0
+    total_weight = sum(active_weights.values())
+    if total_weight > 0:
+        normalized_weights = {k: v / total_weight for k, v in active_weights.items()}
+    else:
+        # Equal distribution if no weights specified
+        normalized_weights = {k: 1.0 / len(req.sources) for k in req.sources}
+    
+    # Calculate per-source result limits based on weights
+    per_source_limits = {}
+    for source in req.sources:
+        weight = normalized_weights.get(source, 0)
+        limit = max(1, int(req.max_results * weight))  # At least 1 result per source
+        per_source_limits[source] = limit
+    
+    logger.info(f"Search distribution for {req.max_results} total results: {per_source_limits}")
+    
     results = []
 
     # Dark Web Search
     if "darkweb" in req.sources:
+        darkweb_limit = per_source_limits.get("darkweb", req.max_results)
         dw_results = await asyncio.get_running_loop().run_in_executor(
             None,
-            __import__('functools').partial(get_search_results, req.refined, max_results=req.max_results)
+            __import__('functools').partial(get_search_results, req.refined, max_results=darkweb_limit)
         )
-        results.extend(dw_results)
+        results.extend(dw_results[:darkweb_limit])  # Ensure we don't exceed limit
 
     # GitHub Search
     if "github" in req.sources:
         from robin.github_search import search_github
+        github_limit = min(per_source_limits.get("github", req.max_results), 100)  # GitHub API max is 100
         gh_results = await asyncio.get_running_loop().run_in_executor(
             None,
             search_github,
             req.refined,
-            req.max_results,
+            github_limit,
             req.min_stars,
             req.min_forks
         )
-        results.extend(gh_results)
+        results.extend(gh_results[:github_limit])
 
     # GitHub Code Search
     if "github_code" in req.sources:
         from robin.github_search import search_github_code
+        github_code_limit = min(per_source_limits.get("github_code", req.max_results), 100)  # GitHub API max is 100
         gh_code_results = await asyncio.get_running_loop().run_in_executor(
             None,
             search_github_code,
             req.refined,
-            req.max_results
+            github_code_limit
         )
-        results.extend(gh_code_results)
+        results.extend(gh_code_results[:github_code_limit])
 
     # GitHub Commit Search
     if "github_commits" in req.sources:
         from robin.github_search import search_github_commits
+        github_commits_limit = min(per_source_limits.get("github_commits", req.max_results), 100)  # GitHub API max is 100
         gh_commit_results = await asyncio.get_running_loop().run_in_executor(
             None,
             search_github_commits,
             req.refined,
-            req.max_results
+            github_commits_limit
         )
-        results.extend(gh_commit_results)
+        results.extend(gh_commit_results[:github_commits_limit])
 
+    logger.info(f"Search completed: {len(results)} total results from {len(req.sources)} sources")
     return {"results": results}
 
 
@@ -250,6 +286,8 @@ class FilterReq(BaseModel):
     model: str
     refined: str
     results: List[Dict[str, Any]]
+    maintain_diversity: bool = True  # New: maintain source balance in filtered results
+    max_results: int = 20  # New: configurable filter limit
 
 
 class FilterResp(BaseModel):
@@ -262,7 +300,14 @@ async def api_filter(req: FilterReq):
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing env: {', '.join(missing)}")
     llm = get_llm(req.model)
-    filtered = filter_results(llm, req.refined, req.results)
+    filtered = filter_results(
+        llm, 
+        req.refined, 
+        req.results, 
+        maintain_diversity=req.maintain_diversity,
+        max_results=req.max_results
+    )
+    logger.info(f"Filtered {len(req.results)} results to {len(filtered)} (diversity={req.maintain_diversity}, max={req.max_results})")
     return {"filtered": filtered}
 
 

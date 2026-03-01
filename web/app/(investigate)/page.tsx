@@ -41,6 +41,12 @@ export default function InvestigationPage() {
   const [useCache, setUseCache] = useState(true)
   const [loadCachedOnly, setLoadCachedOnly] = useState(false)
   const [translate, setTranslate] = useState(true)
+  const [sourceWeights, setSourceWeights] = useState({
+    darkweb: 0.50,
+    github: 0.30,
+    github_code: 0.10,
+    github_commits: 0.10
+  })
   const [perUrl, setPerUrl] = useState<{ url: string; status: string }[]>([])
   const [selectedMap, setSelectedMap] = useState<Record<string, boolean>>({})
   const [keywords, setKeywords] = useState<string[]>([])
@@ -419,6 +425,8 @@ ${artifacts.map(a => `- ${a.type}: ${a.value}`).join("\n")}
         setMinForks={setMinForks}
         includeCommits={includeCommits}
         setIncludeCommits={setIncludeCommits}
+        sourceWeights={sourceWeights}
+        setSourceWeights={setSourceWeights}
       />
     </div>
   )

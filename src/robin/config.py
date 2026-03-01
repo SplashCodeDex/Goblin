@@ -41,6 +41,15 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", None)
 # Scraping configuration
 MAX_SCRAPE_CHARS = int(os.getenv("MAX_SCRAPE_CHARS", "1200"))
 
+# Default source weight distribution for search results
+# These can be overridden per request via API
+DEFAULT_SOURCE_WEIGHTS = {
+    "darkweb": 0.50,      # 50% - Primary focus on dark web intelligence
+    "github": 0.30,       # 30% - GitHub repositories
+    "github_code": 0.10,  # 10% - Code snippets
+    "github_commits": 0.10  # 10% - Commit messages
+}
+
 def get_config():
     """Returns the current configuration, masking sensitive values."""
     return {
@@ -54,7 +63,8 @@ def get_config():
         "TOR_CONTROL_PORT": TOR_CONTROL_PORT,
         "TOR_PASSWORD": _mask(TOR_PASSWORD),
         "MAX_SCRAPE_CHARS": MAX_SCRAPE_CHARS,
-        "CORS_ALLOW_ORIGINS": CORS_ALLOW_ORIGINS
+        "CORS_ALLOW_ORIGINS": CORS_ALLOW_ORIGINS,
+        "DEFAULT_SOURCE_WEIGHTS": DEFAULT_SOURCE_WEIGHTS
     }
 
 def _mask(value):
