@@ -39,6 +39,10 @@ dependencies = [
     "langchain-community>=0.3.13",
     "python-dotenv>=1.0.1",
     "croniter>=5.0.1",
+    "pyyaml>=6.0.0",
+    "truffleHog3>=3.0.0",
+    "h8mail>=2.5.6",
+    "credentialdigger>=4.13.0",
 ]
 
 [project.optional-dependencies]

@@ -182,3 +182,4 @@ node_modules/
 
 out/
 data/robin.db
+test_out*.txt

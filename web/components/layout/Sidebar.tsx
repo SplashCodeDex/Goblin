@@ -4,13 +4,14 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, History, CalendarClock, Settings, ChevronLeft, ChevronRight } from "lucide-react"
+import { LayoutDashboard, History, CalendarClock, Settings, ChevronLeft, ChevronRight, ShieldAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const navItems = [
     { name: "Investigate", href: "/", icon: LayoutDashboard },
     { name: "History", href: "/history", icon: History },
     { name: "Schedule", href: "/schedule", icon: CalendarClock },
+    { name: "Credentials", href: "/credentials", icon: ShieldAlert },
     { name: "Settings", href: "/settings", icon: Settings },
 ]
 

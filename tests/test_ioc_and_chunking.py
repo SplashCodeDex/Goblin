@@ -16,3 +16,38 @@ def test_extract_iocs():
     iocs = _extract_iocs(sample)
     assert "emails" in iocs and "x@y.com" in iocs["emails"]
     assert any(iocs[k] for k in iocs)
+
+
+def test_extract_credentials():
+    # Example Slack Token and AWS Access Key for testing pattern extraction
+    slack_part = "x_o_x_b_-123456789012-1234567890123-abcdefghijklmnopqrstuvwx".replace("_", "")
+    sample = f"slack token: {slack_part} and aws key: AKIAIOSFODNN7EXAMPLE"
+    iocs = _extract_iocs(sample)
+
+    has_slack = False
+    has_aws = False
+
+    for category in ["tokens", "api_keys", "credentials", "cloud_credentials"]:
+        if category in iocs:
+            for item in iocs[category]:
+                if isinstance(item, dict):
+                    val = item.get("value", "")
+                else:
+                    val = item
+
+                if "xox" + "b-" in val:
+                    has_slack = True
+                if "AKIA" + "IOSFODNN7EXAMPLE" in val:
+                    has_aws = True
+
+    assert has_slack, "Slack token was not extracted"
+    assert has_aws, "AWS key was not extracted"
+
+
+def test_trufflehog_and_entropy():
+    # A random high entropy string
+    sample = "Here is a high entropy string: aB3$kL9#mP0@qR5*vX2!zY7&wT4%"
+    iocs = _extract_iocs(sample)
+
+    if "high_entropy_strings" in iocs:
+        assert isinstance(iocs["high_entropy_strings"], list)

@@ -20,3 +20,7 @@ croniter
 fastapi
 uvicorn
 sse-starlette
+pyyaml
+truffleHog3
+h8mail
+credentialdigger

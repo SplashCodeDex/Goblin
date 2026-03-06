@@ -40,14 +40,43 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", None)
 
 # Scraping configuration
 MAX_SCRAPE_CHARS = int(os.getenv("MAX_SCRAPE_CHARS", "1200"))
+CREDENTIAL_SCRAPE_CHARS = int(os.getenv("CREDENTIAL_SCRAPE_CHARS", "50000"))
+
+# Credential Hunting Features (toggles)
+ENABLE_LIVE_VERIFICATION = os.getenv("ENABLE_LIVE_VERIFICATION", "false").lower() == "true"
+ENABLE_BREACH_LOOKUP = os.getenv("ENABLE_BREACH_LOOKUP", "false").lower() == "true"
+ENABLE_DB_DISCOVERY = os.getenv("ENABLE_DB_DISCOVERY", "false").lower() == "true"
+ENABLE_ML_FILTERING = os.getenv("ENABLE_ML_FILTERING", "true").lower() == "true"
+ENABLE_GITHUB_DORKING = os.getenv("ENABLE_GITHUB_DORKING", "false").lower() == "true"
+
+# Breach Lookup Rate Limiting
+BREACH_RATE_LIMIT_MS = int(os.getenv("BREACH_RATE_LIMIT_MS", "1000"))
+
+# Breach Lookup API Keys
+HIBP_API_KEY = os.getenv("HIBP_API_KEY", None)  # Have I Been Pwned
+SNUSBASE_API_KEY = os.getenv("SNUSBASE_API_KEY", None)
+DEHASHED_API_KEY = os.getenv("DEHASHED_API_KEY", None)
+INTELX_API_KEY = os.getenv("INTELX_API_KEY", None)  # Intelligence X
+LEAKLOOKUP_API_KEY = os.getenv("LEAKLOOKUP_API_KEY", None)
+WELEAKINFO_API_KEY = os.getenv("WELEAKINFO_API_KEY", None)
+SCYLLA_API_KEY = os.getenv("SCYLLA_API_KEY", None)
+
+# Database Discovery API Keys
+BINARYEDGE_API_KEY = os.getenv("BINARYEDGE_API_KEY", None)
+
+# Credential Pattern Engine Configuration
+CREDENTIAL_MIN_CONFIDENCE = os.getenv("CREDENTIAL_MIN_CONFIDENCE", "medium")  # low, medium, high
+CREDENTIAL_CATEGORIES = os.getenv("CREDENTIAL_CATEGORIES", "").split(",") if os.getenv("CREDENTIAL_CATEGORIES") else None
 
 # Default source weight distribution for search results
 # These can be overridden per request via API
 DEFAULT_SOURCE_WEIGHTS = {
-    "darkweb": 0.50,      # 50% - Primary focus on dark web intelligence
-    "github": 0.30,       # 30% - GitHub repositories
-    "github_code": 0.10,  # 10% - Code snippets
-    "github_commits": 0.10  # 10% - Commit messages
+    "darkweb": 0.40,          # 40% - Primary focus on dark web intelligence
+    "github": 0.20,           # 20% - GitHub repositories
+    "github_code": 0.10,      # 10% - Code snippets
+    "github_commits": 0.05,   #  5% - Commit messages
+    "github_dorks": 0.15,     # 15% - GitHub credential dorking
+    "github_gists": 0.10,     # 10% - Public gist search
 }
 
 def get_config():
@@ -63,8 +92,26 @@ def get_config():
         "TOR_CONTROL_PORT": TOR_CONTROL_PORT,
         "TOR_PASSWORD": _mask(TOR_PASSWORD),
         "MAX_SCRAPE_CHARS": MAX_SCRAPE_CHARS,
+        "CREDENTIAL_SCRAPE_CHARS": CREDENTIAL_SCRAPE_CHARS,
         "CORS_ALLOW_ORIGINS": CORS_ALLOW_ORIGINS,
-        "DEFAULT_SOURCE_WEIGHTS": DEFAULT_SOURCE_WEIGHTS
+        "DEFAULT_SOURCE_WEIGHTS": DEFAULT_SOURCE_WEIGHTS,
+        # Credential Hunting Features
+        "ENABLE_LIVE_VERIFICATION": ENABLE_LIVE_VERIFICATION,
+        "ENABLE_BREACH_LOOKUP": ENABLE_BREACH_LOOKUP,
+        "ENABLE_DB_DISCOVERY": ENABLE_DB_DISCOVERY,
+        "ENABLE_ML_FILTERING": ENABLE_ML_FILTERING,
+        "ENABLE_GITHUB_DORKING": ENABLE_GITHUB_DORKING,
+        "BREACH_RATE_LIMIT_MS": BREACH_RATE_LIMIT_MS,
+        "CREDENTIAL_MIN_CONFIDENCE": CREDENTIAL_MIN_CONFIDENCE,
+        # API Keys (masked)
+        "HIBP_API_KEY": _mask(HIBP_API_KEY),
+        "SNUSBASE_API_KEY": _mask(SNUSBASE_API_KEY),
+        "DEHASHED_API_KEY": _mask(DEHASHED_API_KEY),
+        "INTELX_API_KEY": _mask(INTELX_API_KEY),
+        "LEAKLOOKUP_API_KEY": _mask(LEAKLOOKUP_API_KEY),
+        "WELEAKINFO_API_KEY": _mask(WELEAKINFO_API_KEY),
+        "SCYLLA_API_KEY": _mask(SCYLLA_API_KEY),
+        "BINARYEDGE_API_KEY": _mask(BINARYEDGE_API_KEY)
     }
 
 def _mask(value):
@@ -84,7 +131,12 @@ def update_config(updates):
         if key in [
             "OPENAI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OLLAMA_BASE_URL",
             "GITHUB_TOKEN", "TOR_SOCKS_HOST", "TOR_SOCKS_PORT", "TOR_CONTROL_PORT",
-            "TOR_PASSWORD", "MAX_SCRAPE_CHARS", "CORS_ALLOW_ORIGINS"
+            "TOR_PASSWORD", "MAX_SCRAPE_CHARS", "CREDENTIAL_SCRAPE_CHARS", "CORS_ALLOW_ORIGINS",
+            "ENABLE_LIVE_VERIFICATION", "ENABLE_BREACH_LOOKUP", "ENABLE_DB_DISCOVERY", "ENABLE_ML_FILTERING",
+            "ENABLE_GITHUB_DORKING", "BREACH_RATE_LIMIT_MS",
+            "HIBP_API_KEY", "SNUSBASE_API_KEY", "DEHASHED_API_KEY", "INTELX_API_KEY",
+            "LEAKLOOKUP_API_KEY", "WELEAKINFO_API_KEY", "SCYLLA_API_KEY", "BINARYEDGE_API_KEY",
+            "CREDENTIAL_MIN_CONFIDENCE", "CREDENTIAL_CATEGORIES"
         ]:
             set_key(env_file, key, str(value))
             # Update global variable in memory (rudimentary reload)

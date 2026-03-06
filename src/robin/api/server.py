@@ -20,6 +20,27 @@ from robin.database import (
 )
 from datetime import datetime
 
+# Import credential hunting engines
+try:
+    from robin import credential_patterns, trufflehog_engine, breach_lookup, ml_filter, leaklooker_engine
+    from robin.config import ENABLE_LIVE_VERIFICATION, ENABLE_BREACH_LOOKUP, ENABLE_DB_DISCOVERY, ENABLE_GITHUB_DORKING
+    CREDENTIAL_ENGINES_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Credential hunting engines not available: {e}")
+    CREDENTIAL_ENGINES_AVAILABLE = False
+    ENABLE_LIVE_VERIFICATION = False
+    ENABLE_BREACH_LOOKUP = False
+    ENABLE_DB_DISCOVERY = False
+    ENABLE_GITHUB_DORKING = False
+
+# Import GitHub dorking engine (optional, enhances GitHub search)
+try:
+    from robin import github_dorking
+    GITHUB_DORKING_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"GitHub dorking engine not available: {e}")
+    GITHUB_DORKING_AVAILABLE = False
+
 app = FastAPI(title="Robin API", version="1.0.0")
 
 @app.on_event("startup")
@@ -92,7 +113,7 @@ class SearchReq(BaseModel):
     min_stars: int = 0
     min_forks: int = 0
     source_weights: Dict[str, float] = None  # Will use DEFAULT_SOURCE_WEIGHTS if None
-    
+
     def __init__(self, **data):
         super().__init__(**data)
         if self.source_weights is None:
@@ -103,13 +124,13 @@ class SearchReq(BaseModel):
 @app.post("/api/search")
 async def api_search(req: SearchReq):
     import asyncio
-    
+
     # Validate and normalize source weights
     weights = req.source_weights.copy()
-    
+
     # Only keep weights for sources that are actually requested
     active_weights = {k: v for k, v in weights.items() if k in req.sources}
-    
+
     # Normalize weights to sum to 1.0
     total_weight = sum(active_weights.values())
     if total_weight > 0:
@@ -117,16 +138,16 @@ async def api_search(req: SearchReq):
     else:
         # Equal distribution if no weights specified
         normalized_weights = {k: 1.0 / len(req.sources) for k in req.sources}
-    
+
     # Calculate per-source result limits based on weights
     per_source_limits = {}
     for source in req.sources:
         weight = normalized_weights.get(source, 0)
         limit = max(1, int(req.max_results * weight))  # At least 1 result per source
         per_source_limits[source] = limit
-    
+
     logger.info(f"Search distribution for {req.max_results} total results: {per_source_limits}")
-    
+
     results = []
 
     # Dark Web Search
@@ -301,9 +322,9 @@ async def api_filter(req: FilterReq):
         raise HTTPException(status_code=400, detail=f"Missing env: {', '.join(missing)}")
     llm = get_llm(req.model)
     filtered = filter_results(
-        llm, 
-        req.refined, 
-        req.results, 
+        llm,
+        req.refined,
+        req.results,
         maintain_diversity=req.maintain_diversity,
         max_results=req.max_results
     )
@@ -473,9 +494,51 @@ class ExtractReq(BaseModel):
 
 @app.post("/api/extract")
 async def api_extract(req: ExtractReq) -> Dict[str, Any]:
+    """
+    Enhanced artifact extraction using unified credential pattern engine.
+    Falls back to basic regex if credential engines not available.
+    """
     artifacts = []
 
-    # Comprehensive regex patterns for artifact extraction
+    # Use enhanced extraction if available
+    if CREDENTIAL_ENGINES_AVAILABLE:
+        try:
+            for url, content in req.scraped.items():
+                # Use credential pattern engine for comprehensive detection
+                matches = credential_patterns.scan_text(content)
+
+                for match in matches:
+                    artifacts.append({
+                        "type": match.category,
+                        "value": match.value,
+                        "context": url,
+                        "pattern_name": match.pattern_name,
+                        "confidence": match.confidence,
+                        "provider": match.provider,
+                        "entropy": match.entropy,
+                        "source_tool": match.source_tool
+                    })
+
+                # Also use TruffleHog for verification
+                trufflehog_findings = trufflehog_engine.scan_text(content)
+                for finding in trufflehog_findings:
+                    artifacts.append({
+                        "type": finding.detector_type,
+                        "value": finding.redacted_value,
+                        "context": url,
+                        "detector": finding.detector_name,
+                        "verified": finding.verified,
+                        "entropy": finding.entropy,
+                        "source_tool": finding.source_tool
+                    })
+
+            return {"artifacts": artifacts, "enhanced": True}
+
+        except Exception as e:
+            logger.error(f"Enhanced extraction failed: {e}. Falling back to basic extraction.")
+            # Fall through to basic extraction
+
+    # Fallback: Basic regex extraction
     patterns = {
         "email": re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"),
         "btc": re.compile(r"\b(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}\b"),
@@ -491,24 +554,21 @@ async def api_extract(req: ExtractReq) -> Dict[str, Any]:
     }
 
     for url, content in req.scraped.items():
-        # Extract standard patterns
         for artifact_type, pattern in patterns.items():
             for match in pattern.findall(content):
                 artifacts.append({"type": artifact_type, "value": match, "context": url})
 
-        # Extract email:password combinations
         email_pass_pattern = re.compile(r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\s*[:;,\s]+\s*([^\s]{4,})")
         for email, password in email_pass_pattern.findall(content):
             if len(password) >= 4 and len(password) <= 128:
                 artifacts.append({"type": "email_password", "value": f"{email}:{password}", "context": url})
 
-        # Extract API keys (common patterns)
         api_pattern = re.compile(r"(?:api[_-]?key|apikey|api[_-]?token|access[_-]?token|secret[_-]?key)['\"]?\s*[:=]\s*['\"]?([a-zA-Z0-9_\-]{20,256})['\"]?", re.IGNORECASE)
         for api_key in api_pattern.findall(content):
             if len(api_key) >= 20 and len(api_key) <= 256 and not re.match(r'^[0-9]+$', api_key):
                 artifacts.append({"type": "api_key", "value": api_key, "context": url})
 
-    return {"artifacts": artifacts}
+    return {"artifacts": artifacts, "enhanced": False}
 
 
 @app.get("/api/history")
@@ -582,15 +642,229 @@ async def api_suggest_playbooks(req: PlaybookSuggestReq):
     missing = missing_model_env(req.model)
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing env: {', '.join(missing)}")
-    
+
     try:
         llm = get_llm(req.model)
         suggestions = suggest_playbooks(
-            llm, 
-            context_query=req.context_query, 
+            llm,
+            context_query=req.context_query,
             max_suggestions=min(req.max_suggestions, 10)  # Cap at 10 for safety
         )
         return {"suggestions": suggestions}
     except Exception as e:
         logger.error(f"Error in api_suggest_playbooks: {type(e)} - {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== NEW CREDENTIAL HUNTING ENDPOINTS ==========
+
+class VerifyCredentialsReq(BaseModel):
+    credentials: List[Dict[str, str]]  # List of {detector_name, value}
+
+
+@app.post("/api/verify_credentials")
+async def api_verify_credentials(req: VerifyCredentialsReq) -> Dict[str, Any]:
+    """
+    Verify if extracted credentials are still active (requires ENABLE_LIVE_VERIFICATION=true).
+    Uses batch concurrent verification for speed.
+    WARNING: This makes live API calls to verify credentials. Use with caution.
+    """
+    if not CREDENTIAL_ENGINES_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Credential engines not available")
+
+    if not ENABLE_LIVE_VERIFICATION:
+        raise HTTPException(status_code=403, detail="Live verification is disabled. Set ENABLE_LIVE_VERIFICATION=true to enable.")
+
+    engine = trufflehog_engine.get_engine(enable_verification=True)
+    results = engine.verify_batch(req.credentials, max_workers=5)
+
+    return {"verification_results": results, "supported_verifiers": list(engine._VERIFIER_MAP.keys())}
+
+
+class BreachLookupReq(BaseModel):
+    emails: List[str]
+
+
+@app.post("/api/breach_lookup")
+async def api_breach_lookup(req: BreachLookupReq) -> Dict[str, Any]:
+    """
+    Lookup breach history for email addresses (requires ENABLE_BREACH_LOOKUP=true).
+    Checks multiple breach databases: HIBP, Snusbase, Dehashed, IntelX, etc.
+    """
+    if not CREDENTIAL_ENGINES_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Credential engines not available")
+
+    if not ENABLE_BREACH_LOOKUP:
+        raise HTTPException(status_code=403, detail="Breach lookup is disabled. Set ENABLE_BREACH_LOOKUP=true and configure API keys.")
+
+    # Limit to 50 emails per request to avoid rate limiting
+    emails_to_check = req.emails[:50]
+
+    try:
+        results = breach_lookup.lookup_emails_bulk(emails_to_check)
+
+        # Convert to serializable format
+        breach_data = {}
+        for email, summary in results.items():
+            breach_data[email] = {
+                'pwned': summary.pwned,
+                'total_breaches': summary.total_breaches,
+                'breach_names': [r.breach_name for r in summary.breach_records],
+                'data_classes': list(summary.data_classes_summary),
+                'sources': list(summary.sources),
+                'leaked_passwords_count': len(summary.leaked_passwords)
+            }
+
+        return {"breach_data": breach_data}
+
+    except Exception as e:
+        logger.error(f"Breach lookup error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ScanDatabasesReq(BaseModel):
+    query: str
+    max_results: int = 100
+
+
+@app.post("/api/scan_databases")
+async def api_scan_databases(req: ScanDatabasesReq) -> Dict[str, Any]:
+    """
+    Scan for exposed databases and services (requires ENABLE_DB_DISCOVERY=true and BINARYEDGE_API_KEY).
+    Searches for exposed MongoDB, Elasticsearch, Redis, S3 buckets, etc.
+    """
+    if not CREDENTIAL_ENGINES_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Credential engines not available")
+
+    if not ENABLE_DB_DISCOVERY:
+        raise HTTPException(status_code=403, detail="Database discovery is disabled. Set ENABLE_DB_DISCOVERY=true and BINARYEDGE_API_KEY.")
+
+    try:
+        results = leaklooker_engine.scan_exposed_databases(req.query, req.max_results)
+
+        # Convert to serializable format
+        exposed_dbs = []
+        for db in results:
+            exposed_dbs.append({
+                'ip': db.ip,
+                'port': db.port,
+                'service_type': db.service_type,
+                'country': db.country,
+                'organization': db.organization,
+                'database_name': db.database_name,
+                'collections': db.collections,
+                'size_mb': db.size_mb,
+                'discovered_at': db.discovered_at
+            })
+
+        return {"exposed_databases": exposed_dbs, "count": len(exposed_dbs)}
+
+    except Exception as e:
+        logger.error(f"Database scanning error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/credential_stats")
+async def api_credential_stats() -> Dict[str, Any]:
+    """
+    Get statistics about the credential pattern engine and loaded patterns.
+    """
+    if not CREDENTIAL_ENGINES_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Credential engines not available")
+
+    try:
+        pattern_stats = credential_patterns.get_pattern_stats()
+        trufflehog_stats = trufflehog_engine.get_engine().get_cache_stats()
+        breach_stats = breach_lookup.get_engine().get_cache_stats()
+        ml_stats = ml_filter.get_engine().get_stats()
+        leaklooker_stats = leaklooker_engine.get_engine().get_stats()
+
+        dorking_stats = {}
+        if GITHUB_DORKING_AVAILABLE:
+            dorking_stats = {
+                'categories': github_dorking.get_dork_categories(),
+                'total_dorks': github_dorking.get_total_dork_count(),
+            }
+
+        return {
+            "patterns": pattern_stats,
+            "trufflehog_cache": trufflehog_stats,
+            "breach_cache": breach_stats,
+            "ml_filter": ml_stats,
+            "leaklooker": leaklooker_stats,
+            "github_dorking": dorking_stats,
+            "features_enabled": {
+                "live_verification": ENABLE_LIVE_VERIFICATION,
+                "breach_lookup": ENABLE_BREACH_LOOKUP,
+                "db_discovery": ENABLE_DB_DISCOVERY,
+                "github_dorking": ENABLE_GITHUB_DORKING
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting credential stats: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== GITHUB DORKING ENDPOINTS ==========
+
+class GithubDorkReq(BaseModel):
+    categories: List[str] = []  # Empty = all categories
+    custom_dorks: List[str] = []
+    limit_per_dork: int = 5
+    max_workers: int = 3
+
+
+@app.post("/api/github_dorks")
+async def api_github_dorks(req: GithubDorkReq) -> Dict[str, Any]:
+    """
+    Run targeted GitHub credential dorking against public repositories.
+    Requires ENABLE_GITHUB_DORKING=true and GITHUB_TOKEN.
+    """
+    if not GITHUB_DORKING_AVAILABLE:
+        raise HTTPException(status_code=503, detail="GitHub dorking engine not available")
+
+    if not ENABLE_GITHUB_DORKING:
+        raise HTTPException(status_code=403, detail="GitHub dorking disabled. Set ENABLE_GITHUB_DORKING=true")
+
+    try:
+        results = github_dorking.search_dorks(
+            categories=req.categories or None,
+            custom_dorks=req.custom_dorks or None,
+            limit_per_dork=req.limit_per_dork,
+            max_workers=min(req.max_workers, 5),
+        )
+
+        # Flatten all results for summary
+        total_hits = sum(len(v) for v in results.values())
+        return {
+            "results": results,
+            "dorks_executed": len(results),
+            "total_hits": total_hits,
+            "categories_available": github_dorking.get_dork_categories(),
+        }
+    except Exception as e:
+        logger.error(f"GitHub dorking error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class GistSearchReq(BaseModel):
+    query: str
+    limit: int = 20
+
+
+@app.post("/api/github_gists")
+async def api_github_gists(req: GistSearchReq) -> Dict[str, Any]:
+    """
+    Search public GitHub Gists for credential leaks.
+    Requires GITHUB_TOKEN.
+    """
+    if not GITHUB_DORKING_AVAILABLE:
+        raise HTTPException(status_code=503, detail="GitHub dorking engine not available")
+
+    try:
+        results = github_dorking.search_gists(req.query, limit=min(req.limit, 100))
+        return {"gists": results, "count": len(results)}
+    except Exception as e:
+        logger.error(f"GitHub gist search error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
