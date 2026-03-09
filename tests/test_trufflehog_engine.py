@@ -34,7 +34,7 @@ def test_scan_text_detects_github_token():
 def test_scan_text_detects_sendgrid_key():
     engine = TruffleHogEngine(enable_verification=False)
     # The regex is: SG\.[a-zA-Z0-9_\-]{22}\.[a-zA-Z0-9_\-]{43}
-    sg_part = 'S_G_.abcdefghijklmnopqrstuv.abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE'.replace('_', '')
+    sg_part = 'S_G_.abcdefghijklmnopqrstuv.abcdefghijklmnopqrstuvwxyz0123456789_-ABCDEF'.replace('_', '')
     text = f'SENDGRID_KEY={sg_part}'
     findings = engine.scan_text(text)
     assert any("SendGrid" in f.detector_name for f in findings)
