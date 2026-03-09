@@ -69,11 +69,23 @@ def test_scan_text_detects_ai_keys():
     OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz0123456789012345678912
     ANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890123456789012345678901234567890AB
     GEMINI_API_KEY=AIzaSyabcdefghijklmnopqrstuvwxyz0123456
+    COHERE_API_KEY=abcdefghijklmnopqrstuvwxyz0123456789ABC
+    MISTRAL_API_KEY=abcdefghijklmnopqrstuvwxyz012345
+    HUGGINGFACE_TOKEN=hf_ABCDEFGHIJKLMNOPQRSTUVWXYZ01234567
+    REPLICATE_API_KEY=r8_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789
+    GROQ_API_KEY=gsk_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnop
+    DEEPSEEK_API_KEY=sk-abcdef0123456789abcdef0123456789
     """
     findings = engine.scan_text(text)
     assert any("OpenAI" in f.detector_name for f in findings)
     assert any("Anthropic" in f.detector_name for f in findings)
     assert any("Google" in f.detector_name for f in findings)
+    assert any("Cohere" in f.detector_name for f in findings)
+    assert any("Mistral" in f.detector_name for f in findings)
+    assert any("HuggingFace" in f.detector_name for f in findings)
+    assert any("Replicate" in f.detector_name for f in findings)
+    assert any("Groq" in f.detector_name for f in findings)
+    assert any("DeepSeek" in f.detector_name for f in findings)
 
 
 def test_entropy_calculation():
@@ -92,7 +104,7 @@ def test_redact_value():
 
 def test_verifier_registry_has_sufficient_entries():
     engine = TruffleHogEngine(enable_verification=True)
-    assert len(engine._VERIFIER_MAP) >= 19
+    assert len(engine._VERIFIER_MAP) >= 25
 
 
 def test_verifier_registry_all_methods_exist():
@@ -127,7 +139,7 @@ def test_get_cache_stats_shows_verifiers():
     stats = engine.get_cache_stats()
     assert "supported_verifiers" in stats
     assert "verifier_count" in stats
-    assert stats["verifier_count"] >= 19
+    assert stats["verifier_count"] >= 25
 
 
 def test_get_engine_singleton():

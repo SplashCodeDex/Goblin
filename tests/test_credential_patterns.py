@@ -26,6 +26,12 @@ def test_extract_new_credentials():
     OpenAI key: sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789012345678912
     Gemini key: AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ0123456
     Anthropic key: sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234567890123456789012345678901234567890AB
+    Cohere key: abcdefghijklmnopqrstuvwxyz0123456789ABC
+    Mistral key: abcdefghijklmnopqrstuvwxyz012345
+    HuggingFace key: hf_ABCDEFGHIJKLMNOPQRSTUVWXYZ01234567
+    Replicate key: r8_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789
+    Groq key: gsk_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnop
+    DeepSeek key: sk-abcdef0123456789abcdef0123456789
     """
     findings = engine.scan_text(test_text)
 
@@ -45,6 +51,30 @@ def test_extract_new_credentials():
     # Check for Anthropic
     anthropic = [f for f in findings if f.pattern_id == 'custom-anthropic-key']
     assert len(anthropic) > 0
+
+    # Check for Cohere
+    cohere = [f for f in findings if f.pattern_id == 'custom-cohere-key']
+    assert len(cohere) > 0
+
+    # Check for Mistral
+    mistral = [f for f in findings if f.pattern_id == 'custom-mistral-key']
+    assert len(mistral) > 0
+
+    # Check for HuggingFace
+    huggingface = [f for f in findings if f.pattern_id == 'custom-huggingface-token']
+    assert len(huggingface) > 0
+
+    # Check for Replicate
+    replicate = [f for f in findings if f.pattern_id == 'custom-replicate-key']
+    assert len(replicate) > 0
+
+    # Check for Groq
+    groq = [f for f in findings if f.pattern_id == 'custom-groq-key']
+    assert len(groq) > 0
+
+    # Check for DeepSeek
+    deepseek = [f for f in findings if f.pattern_id == 'custom-deepseek-key']
+    assert len(deepseek) > 0
 
 def test_entropy():
     # Test our entropy utility since _redact_value doesn't exist

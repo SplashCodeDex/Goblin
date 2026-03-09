@@ -334,6 +334,78 @@ class CredentialPatternEngine:
                 'tags': ['api', 'ai', 'anthropic'],
                 'source': 'custom'
             },
+            # Cohere API Key
+            {
+                'id': 'custom-cohere-key',
+                'name': 'Cohere API Key',
+                'regex': r'[A-Za-z0-9_\-]{39,40}',
+                'confidence': 'medium',
+                'category': 'api_keys',
+                'provider': 'cohere',
+                'description': 'Cohere API key',
+                'tags': ['api', 'ai', 'cohere'],
+                'source': 'custom'
+            },
+            # Mistral API Key
+            {
+                'id': 'custom-mistral-key',
+                'name': 'Mistral API Key',
+                'regex': r'[A-Za-z0-9]{32}',
+                'confidence': 'medium',
+                'category': 'api_keys',
+                'provider': 'mistral',
+                'description': 'Mistral AI API key',
+                'tags': ['api', 'ai', 'mistral'],
+                'source': 'custom'
+            },
+            # HuggingFace Token
+            {
+                'id': 'custom-huggingface-token',
+                'name': 'HuggingFace Token',
+                'regex': r'hf_[a-zA-Z0-9]{34}',
+                'confidence': 'high',
+                'category': 'api_keys',
+                'provider': 'huggingface',
+                'description': 'HuggingFace Access Token',
+                'tags': ['api', 'ai', 'huggingface'],
+                'source': 'custom'
+            },
+            # Replicate API Key
+            {
+                'id': 'custom-replicate-key',
+                'name': 'Replicate API Key',
+                'regex': r'r8_[a-zA-Z0-9]{36,40}',
+                'confidence': 'high',
+                'category': 'api_keys',
+                'provider': 'replicate',
+                'description': 'Replicate API key',
+                'tags': ['api', 'ai', 'replicate'],
+                'source': 'custom'
+            },
+            # Groq API Key
+            {
+                'id': 'custom-groq-key',
+                'name': 'Groq API Key',
+                'regex': r'gsk_[a-zA-Z0-9]{52}',
+                'confidence': 'high',
+                'category': 'api_keys',
+                'provider': 'groq',
+                'description': 'Groq API key',
+                'tags': ['api', 'ai', 'groq'],
+                'source': 'custom'
+            },
+            # DeepSeek API Key
+            {
+                'id': 'custom-deepseek-key',
+                'name': 'DeepSeek API Key',
+                'regex': r'sk-[a-f0-9]{32}',
+                'confidence': 'high',
+                'category': 'api_keys',
+                'provider': 'deepseek',
+                'description': 'DeepSeek API key',
+                'tags': ['api', 'ai', 'deepseek'],
+                'source': 'custom'
+            },
         ]
 
         initial_count = len(self.patterns)

@@ -286,6 +286,30 @@ class TruffleHogEngine:
                 'pattern': r'-----BEGIN PGP PRIVATE KEY BLOCK-----',
                 'type': 'private_keys'
             },
+            'Cohere API Key': {
+                'pattern': r'[A-Za-z0-9_\-]{39,40}',
+                'type': 'api_keys'
+            },
+            'Mistral API Key': {
+                'pattern': r'[A-Za-z0-9]{32}',
+                'type': 'api_keys'
+            },
+            'HuggingFace Token': {
+                'pattern': r'hf_[a-zA-Z0-9]{34}',
+                'type': 'api_keys'
+            },
+            'Replicate API Key': {
+                'pattern': r'r8_[a-zA-Z0-9]{36,40}',
+                'type': 'api_keys'
+            },
+            'Groq API Key': {
+                'pattern': r'gsk_[a-zA-Z0-9]{52}',
+                'type': 'api_keys'
+            },
+            'DeepSeek API Key': {
+                'pattern': r'sk-[a-f0-9]{32}',
+                'type': 'api_keys'
+            },
         }
 
     # ─── Verifier registry ────────────────────────────────────────────
@@ -310,6 +334,12 @@ class TruffleHogEngine:
         'OpenAI API Key':       '_verify_openai_key',
         'Google API Key':       '_verify_gemini_key',
         'Anthropic API Key':    '_verify_anthropic_key',
+        'Cohere API Key':       '_verify_cohere_key',
+        'Mistral API Key':      '_verify_mistral_key',
+        'HuggingFace Token':    '_verify_huggingface_token',
+        'Replicate API Key':    '_verify_replicate_key',
+        'Groq API Key':         '_verify_groq_key',
+        'DeepSeek API Key':     '_verify_deepseek_key',
     }
 
     def _verify_credential(self, detector_name: str, raw_value: str) -> Tuple[Optional[bool], Optional[str]]:
@@ -673,6 +703,96 @@ class TruffleHogEngine:
                 return True, None
             elif resp.status_code == 401:
                 return False, "Invalid Anthropic key"
+            return None, f"Unexpected response: {resp.status_code}"
+        except Exception as e:
+            return None, f"Connection error: {e}"
+
+    def _verify_cohere_key(self, key: str) -> Tuple[Optional[bool], Optional[str]]:
+        try:
+            resp = _requests.get(
+                'https://api.cohere.com/v2/models',
+                headers={'Authorization': f'Bearer {key}'},
+                timeout=VERIFICATION_TIMEOUT
+            )
+            if resp.status_code == 200:
+                return True, None
+            elif resp.status_code in (401, 403):
+                return False, "Invalid Cohere key"
+            return None, f"Unexpected response: {resp.status_code}"
+        except Exception as e:
+            return None, f"Connection error: {e}"
+
+    def _verify_mistral_key(self, key: str) -> Tuple[Optional[bool], Optional[str]]:
+        try:
+            resp = _requests.get(
+                'https://api.mistral.ai/v1/models',
+                headers={'Authorization': f'Bearer {key}'},
+                timeout=VERIFICATION_TIMEOUT
+            )
+            if resp.status_code == 200:
+                return True, None
+            elif resp.status_code in (401, 403):
+                return False, "Invalid Mistral key"
+            return None, f"Unexpected response: {resp.status_code}"
+        except Exception as e:
+            return None, f"Connection error: {e}"
+
+    def _verify_huggingface_token(self, key: str) -> Tuple[Optional[bool], Optional[str]]:
+        try:
+            resp = _requests.get(
+                'https://huggingface.co/api/whoami-v2',
+                headers={'Authorization': f'Bearer {key}'},
+                timeout=VERIFICATION_TIMEOUT
+            )
+            if resp.status_code == 200:
+                return True, None
+            elif resp.status_code in (401, 403):
+                return False, "Invalid HuggingFace token"
+            return None, f"Unexpected response: {resp.status_code}"
+        except Exception as e:
+            return None, f"Connection error: {e}"
+
+    def _verify_replicate_key(self, key: str) -> Tuple[Optional[bool], Optional[str]]:
+        try:
+            resp = _requests.get(
+                'https://api.replicate.com/v1/models',
+                headers={'Authorization': f'Bearer {key}'},
+                timeout=VERIFICATION_TIMEOUT
+            )
+            if resp.status_code == 200:
+                return True, None
+            elif resp.status_code in (401, 403):
+                return False, "Invalid Replicate key"
+            return None, f"Unexpected response: {resp.status_code}"
+        except Exception as e:
+            return None, f"Connection error: {e}"
+
+    def _verify_groq_key(self, key: str) -> Tuple[Optional[bool], Optional[str]]:
+        try:
+            resp = _requests.get(
+                'https://api.groq.com/openai/v1/models',
+                headers={'Authorization': f'Bearer {key}'},
+                timeout=VERIFICATION_TIMEOUT
+            )
+            if resp.status_code == 200:
+                return True, None
+            elif resp.status_code in (401, 403):
+                return False, "Invalid Groq key"
+            return None, f"Unexpected response: {resp.status_code}"
+        except Exception as e:
+            return None, f"Connection error: {e}"
+
+    def _verify_deepseek_key(self, key: str) -> Tuple[Optional[bool], Optional[str]]:
+        try:
+            resp = _requests.get(
+                'https://api.deepseek.com/v1/models',
+                headers={'Authorization': f'Bearer {key}'},
+                timeout=VERIFICATION_TIMEOUT
+            )
+            if resp.status_code == 200:
+                return True, None
+            elif resp.status_code in (401, 403):
+                return False, "Invalid DeepSeek key"
             return None, f"Unexpected response: {resp.status_code}"
         except Exception as e:
             return None, f"Connection error: {e}"
