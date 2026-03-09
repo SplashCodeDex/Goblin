@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/hooks/use-toast"
-import { verifyCredentials, breachLookupBulk, githubDorks, githubGists, credentialStats } from "@/lib/api"
-import { ShieldAlert, Key, Search, Database, Github, FileText, Loader2, RefreshCw } from "lucide-react"
+import { verifyCredentials, breachLookupBulk, githubDorks, githubGists, credentialStats, extractArtifacts } from "@/lib/api"
+import { ShieldAlert, Key, Search, Database, Github, FileText, Loader2, RefreshCw, Cpu, Download, CheckCircle, XCircle } from "lucide-react"
 
 export default function CredentialsDashboard() {
     const { toast } = useToast()
@@ -29,6 +29,11 @@ export default function CredentialsDashboard() {
     // GitHub Gists State
     const [gistQuery, setGistQuery] = useState("")
     const [gistResults, setGistResults] = useState<any>(null)
+
+    // AI Keys State
+    const [aiKeysText, setAiKeysText] = useState("")
+    const [aiKeysResults, setAiKeysResults] = useState<any[]>([])
+    const [verifyingKey, setVerifyingKey] = useState<string | null>(null)
 
     useEffect(() => {
         loadStats()
@@ -105,6 +110,83 @@ export default function CredentialsDashboard() {
         }
     }
 
+    async function handleScanAiKeys() {
+        if (!aiKeysText.trim()) return
+        try {
+            setLoading(true)
+            const data = await extractArtifacts({ "input": aiKeysText })
+            // Filter out only AI keys based on detector/type
+            const aiProviders = ["OpenAI", "Anthropic", "Gemini", "Cohere", "Mistral", "HuggingFace", "Replicate", "Groq", "DeepSeek", "custom-openai-key", "custom-anthropic-key", "custom-gemini-key"]
+            const aiKeys = data.artifacts.filter(a =>
+                aiProviders.some(p =>
+                    (a.detector && a.detector.toLowerCase().includes(p.toLowerCase())) ||
+                    (a.type && a.type.toLowerCase().includes(p.toLowerCase())) ||
+                    (a.pattern_name && a.pattern_name.toLowerCase().includes(p.toLowerCase()))
+                )
+            )
+
+            // Map to a consistent format
+            const formattedKeys = aiKeys.map((k: any) => ({
+                provider: k.provider || k.detector || k.type || "Unknown AI",
+                value: k.value,
+                verified: k.verified,
+                raw: k.value,
+            }))
+
+            setAiKeysResults(formattedKeys)
+            toast({ description: `Found ${formattedKeys.length} potential AI keys` })
+        } catch (e: any) {
+            toast({ description: e?.message || "Scanning failed", variant: "destructive" })
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    async function handleVerifySingleAiKey(idx: number, keyObj: any) {
+        try {
+            setVerifyingKey(idx.toString())
+            // Send exactly the value we have to verifyCredentials
+            const data = await verifyCredentials([{ detector_name: keyObj.provider, value: keyObj.raw }])
+
+            // Update the specific result
+            setAiKeysResults(prev => {
+                const updated = [...prev]
+                if (data.verification_results && data.verification_results.length > 0) {
+                    updated[idx] = { ...updated[idx], verified: data.verification_results[0].verified }
+                }
+                return updated
+            })
+            toast({ description: "Key verification complete" })
+        } catch (e: any) {
+            toast({ description: e?.message || "Key verification failed", variant: "destructive" })
+        } finally {
+            setVerifyingKey(null)
+        }
+    }
+
+    function exportAiKeys(format: "json" | "csv") {
+        if (aiKeysResults.length === 0) return
+
+        let content = ""
+        let filename = `ai_keys_export_${new Date().toISOString().split("T")[0]}`
+
+        if (format === "json") {
+            content = JSON.stringify(aiKeysResults, null, 2)
+            filename += ".json"
+        } else {
+            content = "Provider,Key,Verified\n" + aiKeysResults.map(k => `"${k.provider}","${k.raw}","${k.verified !== undefined ? k.verified : 'Unknown'}"`).join("\n")
+            filename += ".csv"
+        }
+
+        const blob = new Blob([content], { type: "text/plain" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = filename
+        a.click()
+        URL.revokeObjectURL(url)
+    }
+
     return (
         <div className="container mx-auto p-6 space-y-6 max-w-[1600px]">
             <div className="flex justify-between items-center mb-6">
@@ -150,11 +232,12 @@ export default function CredentialsDashboard() {
             )}
 
             <Tabs defaultValue="verify" className="w-full">
-                <TabsList className="grid w-full grid-cols-4 bg-zinc-900/80 mb-6 border border-zinc-800">
-                    <TabsTrigger value="verify" className="flex items-center gap-2"><Key className="w-4 h-4" /> Live Verify</TabsTrigger>
-                    <TabsTrigger value="breach" className="flex items-center gap-2"><Database className="w-4 h-4" /> Breach Lookup</TabsTrigger>
-                    <TabsTrigger value="dorks" className="flex items-center gap-2"><Github className="w-4 h-4" /> GitHub Dorks</TabsTrigger>
-                    <TabsTrigger value="gists" className="flex items-center gap-2"><FileText className="w-4 h-4" /> Gists</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-5 bg-zinc-900/80 mb-6 border border-zinc-800 h-auto p-1">
+                    <TabsTrigger value="verify" className="flex items-center gap-2 py-2"><Key className="w-4 h-4" /> Live Verify</TabsTrigger>
+                    <TabsTrigger value="ai_keys" className="flex items-center gap-2 py-2"><Cpu className="w-4 h-4" /> AI Keys</TabsTrigger>
+                    <TabsTrigger value="breach" className="flex items-center gap-2 py-2"><Database className="w-4 h-4" /> Breach Lookup</TabsTrigger>
+                    <TabsTrigger value="dorks" className="flex items-center gap-2 py-2"><Github className="w-4 h-4" /> GitHub </TabsTrigger>
+                    <TabsTrigger value="gists" className="flex items-center gap-2 py-2"><FileText className="w-4 h-4" /> Gists</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="verify">
@@ -202,6 +285,93 @@ export default function CredentialsDashboard() {
                                             No credentials found in the provided text.
                                         </div>
                                     )}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="ai_keys">
+                    <Card className="border-zinc-800 bg-zinc-900/50">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2"><Cpu className="w-5 h-5 text-purple-400" /> AI Provider Keys</CardTitle>
+                            <CardDescription>Specifically hunt and isolate API keys for AI models (OpenAI, Anthropic, Gemini, DeepSeek, etc.) from raw text.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <Textarea
+                                placeholder="Paste source code, env files, or transcripts to hunt for AI keys..."
+                                className="min-h-[150px] font-mono text-sm bg-zinc-950/50"
+                                value={aiKeysText}
+                                onChange={(e) => setAiKeysText(e.target.value)}
+                            />
+
+                            <div className="flex justify-between items-center flex-wrap gap-4">
+                                <Button onClick={handleScanAiKeys} disabled={loading || !aiKeysText.trim()} className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700">
+                                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                                    Hunt AI Keys
+                                </Button>
+
+                                {aiKeysResults.length > 0 && (
+                                    <div className="flex gap-2">
+                                        <Button onClick={() => exportAiKeys("json")} variant="outline" size="sm" className="flex items-center gap-2">
+                                            <Download className="w-4 h-4" /> Export JSON
+                                        </Button>
+                                        <Button onClick={() => exportAiKeys("csv")} variant="outline" size="sm" className="flex items-center gap-2">
+                                            <Download className="w-4 h-4" /> Export CSV
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {aiKeysResults.length > 0 && (
+                                <div className="mt-8 space-y-4">
+                                    <h3 className="text-lg font-semibold border-b border-zinc-800 pb-2">Found AI Keys ({aiKeysResults.length})</h3>
+                                    <div className="grid gap-3">
+                                        {aiKeysResults.map((cred: any, idx: number) => (
+                                            <Card key={idx} className="bg-zinc-950 border-zinc-800 shadow-sm flex flex-col sm:flex-row items-center justify-between p-4 gap-4">
+                                                <div className="flex-1 min-w-0 flex flex-col gap-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <Cpu className="w-4 h-4 text-purple-400" />
+                                                        <span className="font-bold text-sm uppercase tracking-wider text-purple-300">
+                                                            {cred.provider.replace("custom-", "").replace("-key", "")}
+                                                        </span>
+                                                        {cred.verified === true && (
+                                                            <span className="flex items-center gap-1 text-xs bg-green-500/10 text-green-400 px-2 py-0.5 rounded-full border border-green-500/20">
+                                                                <CheckCircle className="w-3 h-3" /> Active
+                                                            </span>
+                                                        )}
+                                                        {cred.verified === false && (
+                                                            <span className="flex items-center gap-1 text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full border border-red-500/20">
+                                                                <XCircle className="w-3 h-3" /> Invalid
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="font-mono text-sm text-zinc-300 break-all bg-zinc-900 border border-zinc-800 rounded px-3 py-2 mt-1 select-all">
+                                                        {cred.raw}
+                                                    </div>
+                                                </div>
+                                                <Button
+                                                    onClick={() => handleVerifySingleAiKey(idx, cred)}
+                                                    disabled={verifyingKey === idx.toString()}
+                                                    variant="secondary"
+                                                    size="sm"
+                                                    className="shrink-0 w-full sm:w-auto"
+                                                >
+                                                    {verifyingKey === idx.toString() ? (
+                                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Verifying...</>
+                                                    ) : (
+                                                        <><Key className="w-4 h-4 mr-2" /> Verify Key</>
+                                                    )}
+                                                </Button>
+                                            </Card>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {!loading && aiKeysText.trim() && aiKeysResults.length === 0 && (
+                                <div className="mt-8 text-center text-zinc-500 py-6 border border-dashed border-zinc-800 rounded-lg">
+                                    No AI provider keys detected in the text submitted.
                                 </div>
                             )}
                         </CardContent>
