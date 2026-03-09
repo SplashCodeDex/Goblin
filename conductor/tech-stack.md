@@ -10,6 +10,8 @@
 ## OSINT & Intelligence
 - **Tor integration:** Native SOCKS proxy routing for all dark-web requests.
 - **Scraping Engine:** BeautifulSoup4, Requests (with retry logic), and specialized handlers.
+- **Telegram Integration:** Telethon-based monitoring for specialized log channels.
+- **Hybrid Ingestion Engine:** Background 'Watcher' mode for persistent monitoring of hot leaks.
 - **OCR & Document Extraction:** Pytesseract (for images) and pdfplumber (for PDFs).
 - **ML & AI Integration:** Support for OpenAI, Anthropic, and local Ollama models for analyzing data.
 
