@@ -408,6 +408,31 @@ def _canonicalize_url(url: str) -> str:
         return url
 
 
+from .paste_scraper import PasteScraper, PastebinHandler, PasteeeHandler, DumpToHandler, DeepPasteHandler, StrongholdHandler
+
+def fetch_paste_results(query):
+    """
+    Helper to search all configured paste sources for a query.
+    """
+    scraper = PasteScraper([
+        PastebinHandler(),
+        PasteeeHandler(),
+        DumpToHandler(),
+        DeepPasteHandler(),
+        StrongholdHandler()
+    ])
+    results = scraper.search_all(query)
+    # Convert to standard search result format
+    formatted = []
+    for r in results:
+        formatted.append({
+            "title": r.get("title", "Paste Leak"),
+            "link": r.get("url"),
+            "snippet": r.get("snippet", ""),
+            "source": "paste"
+        })
+    return formatted
+
 def get_search_results(refined_query, max_workers=5, max_results=None, request_timeout=30, use_cache=True, load_cached_only=False):
     cache_key = json.dumps({"q": refined_query, "mw": max_workers, "to": request_timeout, "mr": max_results})
     if use_cache:
@@ -425,10 +450,21 @@ def get_search_results(refined_query, max_workers=5, max_results=None, request_t
             health = {e: 0 for e in endpoints}
         endpoints.sort(key=lambda e: (health.get(e, 0) + random.random() * 0.1), reverse=True)
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Add paste search to the pool
+            paste_future = executor.submit(fetch_paste_results, refined_query)
+            
             future_to_endpoint = {
                 executor.submit(fetch_search_results, endpoint, refined_query, request_timeout): endpoint
                 for endpoint in endpoints
             }
+            
+            # Get paste results
+            try:
+                paste_results = paste_future.result()
+                results.extend(paste_results)
+            except Exception as e:
+                logger.debug(f"paste search error: {e}")
+
             for future in as_completed(future_to_endpoint):
                 endpoint = future_to_endpoint[future]
                 try:

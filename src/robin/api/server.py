@@ -41,6 +41,14 @@ except ImportError as e:
     logger.warning(f"GitHub dorking engine not available: {e}")
     GITHUB_DORKING_AVAILABLE = False
 
+# Import CI/CD hunter engine
+try:
+    from robin import cicd_hunter
+    CICD_HUNTER_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"CI/CD Hunter not available: {e}")
+    CICD_HUNTER_AVAILABLE = False
+
 app = FastAPI(title="Robin API", version="1.0.0")
 
 @app.on_event("startup")
@@ -868,3 +876,38 @@ async def api_github_gists(req: GistSearchReq) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"GitHub gist search error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+# ========== CI/CD HUNTER ENDPOINTS ==========
+
+class CICDHuntReq(BaseModel):
+    max_repos: int = 5
+    max_workers: int = 2
+
+
+@app.post("/api/hunt_cicd")
+async def api_hunt_cicd(req: CICDHuntReq):
+    """
+    Start a CI/CD build logs hunt across GitHub repositories.
+    Streams results back to the client using Server-Sent Events (SSE).
+    """
+    if not CICD_HUNTER_AVAILABLE:
+        raise HTTPException(status_code=503, detail="CI/CD Hunter engine not available")
+
+    async def event_generator():
+        try:
+            for event in cicd_hunter.start_cicd_sweep(
+                max_repos=req.max_repos,
+                max_workers=req.max_workers
+            ):
+                yield {
+                    "event": "message",
+                    "data": __import__("json").dumps(event)
+                }
+        except Exception as e:
+            logger.error(f"Error during CI/CD sweep: {e}", exc_info=True)
+            yield {
+                "event": "error",
+                "data": __import__("json").dumps({"error": str(e)})
+            }
+
+    return EventSourceResponse(event_generator())

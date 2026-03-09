@@ -62,6 +62,37 @@ def initialize_database():
     );
     """)
 
+    # Create 'leaks' table for unified leak storage
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS leaks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_type TEXT NOT NULL, -- 'paste', 'telegram', 'github', 'breach_repo'
+        source_name TEXT NOT NULL, -- e.g. 'Pastebin', 'Moon Cloud'
+        external_id TEXT,          -- ID from the source (e.g. paste ID)
+        url TEXT,
+        title TEXT,
+        content TEXT,
+        summary TEXT,
+        relevance_score REAL DEFAULT 0.0,
+        patterns_found TEXT,       -- JSON list of discovered patterns
+        timestamp TEXT NOT NULL,
+        UNIQUE(source_type, source_name, external_id)
+    );
+    """)
+
+    # Create 'paste_metadata' for source-specific details
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS paste_metadata (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        leak_id INTEGER,
+        author TEXT,
+        expiration TEXT,
+        syntax TEXT,
+        scrape_timestamp TEXT,
+        FOREIGN KEY (leak_id) REFERENCES leaks (id)
+    );
+    """)
+
     # Create 'notifications' table for user alerts
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS notifications (

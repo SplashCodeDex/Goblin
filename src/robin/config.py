@@ -38,6 +38,9 @@ SEARCH_ENGINE_ENDPOINTS = [
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", None)
 
+# Defaults
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gpt4o")
+
 # Scraping configuration
 MAX_SCRAPE_CHARS = int(os.getenv("MAX_SCRAPE_CHARS", "1200"))
 CREDENTIAL_SCRAPE_CHARS = int(os.getenv("CREDENTIAL_SCRAPE_CHARS", "50000"))
@@ -63,6 +66,11 @@ SCYLLA_API_KEY = os.getenv("SCYLLA_API_KEY", None)
 
 # Database Discovery API Keys
 BINARYEDGE_API_KEY = os.getenv("BINARYEDGE_API_KEY", None)
+
+# Telegram API Configuration
+TELEGRAM_API_ID = os.getenv("TELEGRAM_API_ID", None)
+TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", None)
+TELEGRAM_PHONE = os.getenv("TELEGRAM_PHONE", None)
 
 # Credential Pattern Engine Configuration
 CREDENTIAL_MIN_CONFIDENCE = os.getenv("CREDENTIAL_MIN_CONFIDENCE", "medium")  # low, medium, high

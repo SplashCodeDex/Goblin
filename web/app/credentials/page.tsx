@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/hooks/use-toast"
 import { verifyCredentials, breachLookupBulk, githubDorks, githubGists, credentialStats, extractArtifacts } from "@/lib/api"
-import { ShieldAlert, Key, Search, Database, Github, FileText, Loader2, RefreshCw, Cpu, Download, CheckCircle, XCircle } from "lucide-react"
+import { ShieldAlert, Key, Search, Database, Github, FileText, Loader2, RefreshCw, Cpu, Download, CheckCircle, XCircle, HardDriveDownload } from "lucide-react"
 
 export default function CredentialsDashboard() {
     const { toast } = useToast()
@@ -34,6 +34,12 @@ export default function CredentialsDashboard() {
     const [aiKeysText, setAiKeysText] = useState("")
     const [aiKeysResults, setAiKeysResults] = useState<any[]>([])
     const [verifyingKey, setVerifyingKey] = useState<string | null>(null)
+
+    // CI/CD Hunter State
+    const [huntRepoLimit, setHuntRepoLimit] = useState(5)
+    const [huntWorkers, setHuntWorkers] = useState(2)
+    const [huntStatus, setHuntStatus] = useState<"idle" | "running" | "done" | "error">("idle")
+    const [huntEvents, setHuntEvents] = useState<any[]>([])
 
     useEffect(() => {
         loadStats()
@@ -187,6 +193,66 @@ export default function CredentialsDashboard() {
         URL.revokeObjectURL(url)
     }
 
+    // ========== CI/CD HUNTER SSR LOGIC ==========
+    const startCicdHunt = async () => {
+        if (huntStatus === "running") return;
+
+        setHuntEvents([]);
+        setHuntStatus("running");
+
+        try {
+            const res = await fetch("http://localhost:8000/api/hunt_cicd", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    max_repos: huntRepoLimit,
+                    max_workers: huntWorkers,
+                })
+            });
+
+            if (!res.body) throw new Error("No response body");
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+
+            let buffer = "";
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                let currentEvent = "";
+                for (const line of lines) {
+                    if (line.startsWith("event: ")) {
+                        currentEvent = line.substring(7).trim();
+                    } else if (line.startsWith("data: ")) {
+                        try {
+                            const dataStr = line.substring(6).trim();
+                            const eventData = JSON.parse(dataStr);
+
+                            if (currentEvent === "message") {
+                                setHuntEvents(prev => [...prev, eventData]);
+                            } else if (currentEvent === "error") {
+                                console.error("SSE Error:", eventData.error);
+                                toast({ title: "Hunt Error", description: eventData.error, variant: "destructive" });
+                            }
+                        } catch (e) {
+                            console.error("Failed to parse SSE data", e, line);
+                        }
+                    }
+                }
+            }
+            setHuntStatus("done");
+            toast({ description: "CI/CD Hunt complete" });
+        } catch (e: any) {
+            console.error(e);
+            setHuntStatus("error");
+            toast({ description: e?.message || "Failed to start hunt", variant: "destructive" });
+        }
+    };
+
     return (
         <div className="container mx-auto p-6 space-y-6 max-w-[1600px]">
             <div className="flex justify-between items-center mb-6">
@@ -232,12 +298,13 @@ export default function CredentialsDashboard() {
             )}
 
             <Tabs defaultValue="verify" className="w-full">
-                <TabsList className="grid w-full grid-cols-5 bg-zinc-900/80 mb-6 border border-zinc-800 h-auto p-1">
+                <TabsList className="grid w-full grid-cols-6 bg-zinc-900/80 mb-6 border border-zinc-800 h-auto p-1">
                     <TabsTrigger value="verify" className="flex items-center gap-2 py-2"><Key className="w-4 h-4" /> Live Verify</TabsTrigger>
                     <TabsTrigger value="ai_keys" className="flex items-center gap-2 py-2"><Cpu className="w-4 h-4" /> AI Keys</TabsTrigger>
                     <TabsTrigger value="breach" className="flex items-center gap-2 py-2"><Database className="w-4 h-4" /> Breach Lookup</TabsTrigger>
                     <TabsTrigger value="dorks" className="flex items-center gap-2 py-2"><Github className="w-4 h-4" /> GitHub </TabsTrigger>
                     <TabsTrigger value="gists" className="flex items-center gap-2 py-2"><FileText className="w-4 h-4" /> Gists</TabsTrigger>
+                    <TabsTrigger value="cicd" className="flex items-center gap-2 py-2"><HardDriveDownload className="w-4 h-4" /> CI/CD Logs</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="verify">
@@ -543,6 +610,82 @@ export default function CredentialsDashboard() {
                                     )}
                                 </div>
                             )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="cicd">
+                    <Card className="border-zinc-800 bg-zinc-900/50">
+                        <CardHeader>
+                            <CardTitle>Continuous Integration / Build Log Hunter</CardTitle>
+                            <CardDescription>
+                                Scour public GitHub Actions logs for leaked secrets, tokens, and API keys.
+                                Uses advanced dorks to find target repos, downloads logs in bulk, and scans across all active engines.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-zinc-300">Max Repositories</label>
+                                    <Input
+                                        type="number"
+                                        value={huntRepoLimit}
+                                        onChange={e => setHuntRepoLimit(parseInt(e.target.value) || 1)}
+                                        min={1}
+                                        max={50}
+                                        className="bg-zinc-950/50"
+                                        disabled={huntStatus === "running"}
+                                    />
+                                    <p className="text-xs text-zinc-500">Repositories to target and download logs from.</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-zinc-300">Max Concurrent Workers</label>
+                                    <Input
+                                        type="number"
+                                        value={huntWorkers}
+                                        onChange={e => setHuntWorkers(parseInt(e.target.value) || 1)}
+                                        min={1}
+                                        max={5}
+                                        className="bg-zinc-950/50"
+                                        disabled={huntStatus === "running"}
+                                    />
+                                    <p className="text-xs text-zinc-500">Threads for downloading/scanning (keep low to avoid ban).</p>
+                                </div>
+                                <div className="flex items-end pb-7">
+                                    <Button
+                                        onClick={startCicdHunt}
+                                        disabled={huntStatus === "running"}
+                                        className="w-full bg-red-600 hover:bg-red-700 text-white"
+                                    >
+                                        {huntStatus === "running" ? (
+                                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Hunting...</>
+                                        ) : (
+                                            <><HardDriveDownload className="mr-2 h-4 w-4" /> Initiate Sweeps</>
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div className="bg-black/50 border border-zinc-800 rounded-md p-4 h-96 overflow-y-auto font-mono text-sm space-y-2">
+                                {huntEvents.length === 0 ? (
+                                    <p className="text-zinc-600 text-center mt-32">Terminal output will appear here...</p>
+                                ) : (
+                                    huntEvents.map((evt, i) => (
+                                        <div key={i} className={`flex ${evt.event === 'error' ? 'text-red-400' : (evt.event === 'finding' ? 'text-green-400 font-bold bg-green-900/10 p-1' : 'text-zinc-400')}`}>
+                                            <span className="text-zinc-600 mr-3 shrink-0">[{new Date(evt.timestamp * 1000).toLocaleTimeString()}]</span>
+
+                                            {evt.event === 'repo_discovered' && <span>🔍 Found target: {evt.repo} (Score: {evt.score})</span>}
+                                            {evt.event === 'fetch_runs' && <span>🔄 Fetching runs for {evt.repo}...</span>}
+                                            {evt.event === 'processing' && <span>⚙️ Processing {evt.run_count} runs from {evt.repo}...</span>}
+                                            {evt.event === 'scan_complete' && <span>✅ Scan complete: {evt.repo} (Found: {evt.findings_count})</span>}
+                                            {evt.event === 'finding' && <span>🚨 LEAK: [{evt.detector || evt.type}] {evt.repo} ({evt.source_run})</span>}
+                                            {evt.event === 'error' && <span>❌ Error processing {evt.repo}: {evt.message}</span>}
+                                            {evt.event === 'sweep_complete' && <span className="text-blue-400 font-bold mt-4 block">🏁 Sweep Finished! Total Leaks Found: {evt.total_findings}</span>}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
                         </CardContent>
                     </Card>
                 </TabsContent>

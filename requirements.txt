@@ -24,3 +24,4 @@ pyyaml
 truffleHog3
 h8mail
 credentialdigger
+telethon
