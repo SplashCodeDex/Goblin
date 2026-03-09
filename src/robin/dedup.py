@@ -14,18 +14,10 @@ class ContentHasher:
     def _preprocess(text: str) -> List[str]:
         """
         Tokenizes and cleans text for hashing.
-        Optimized: For small text, use 3-char shingles. For large text, use word-based shingles.
         """
+        # Lowercase and extract alphanumeric features (shingles)
         text = text.lower()
-        
-        # If very large, use word-based approach to avoid millions of features
-        if len(text) > 100 * 1024:
-            # Word-based shingles
-            words = re.findall(r'\w+', text)
-            # Use windows of 3 words
-            return [" ".join(words[i:i+3]) for i in range(max(len(words)-2, 1))]
-        
-        # Default: 3-character shingles
+        # Use 3-character shingles for better granularity in combolists
         width = 3
         return [text[i:i + width] for i in range(max(len(text) - width + 1, 1))]
 
