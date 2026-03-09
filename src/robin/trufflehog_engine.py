@@ -307,6 +307,9 @@ class TruffleHogEngine:
         'Cloudflare API Key':   '_verify_cloudflare_token',
         'Firebase API Key':     '_verify_firebase_key',
         'Discord Bot Token':    '_verify_discord_token',
+        'OpenAI API Key':       '_verify_openai_key',
+        'Google API Key':       '_verify_gemini_key',
+        'Anthropic API Key':    '_verify_anthropic_key',
     }
 
     def _verify_credential(self, detector_name: str, raw_value: str) -> Tuple[Optional[bool], Optional[str]]:
@@ -620,6 +623,56 @@ class TruffleHogEngine:
                 return True, None
             elif resp.status_code == 401:
                 return False, "Invalid Discord token"
+            return None, f"Unexpected response: {resp.status_code}"
+        except Exception as e:
+            return None, f"Connection error: {e}"
+
+    def _verify_openai_key(self, key: str) -> Tuple[Optional[bool], Optional[str]]:
+        """Verify an OpenAI API key."""
+        try:
+            resp = _requests.get(
+                'https://api.openai.com/v1/models',
+                headers={'Authorization': f'Bearer {key}'},
+                timeout=VERIFICATION_TIMEOUT
+            )
+            if resp.status_code == 200:
+                return True, None
+            elif resp.status_code == 401:
+                return False, "Invalid OpenAI key"
+            return None, f"Unexpected response: {resp.status_code}"
+        except Exception as e:
+            return None, f"Connection error: {e}"
+
+    def _verify_gemini_key(self, key: str) -> Tuple[Optional[bool], Optional[str]]:
+        """Verify a Google Gemini / AI Studio API key."""
+        try:
+            resp = _requests.get(
+                f'https://generativelanguage.googleapis.com/v1beta/models?key={key}',
+                timeout=VERIFICATION_TIMEOUT
+            )
+            if resp.status_code == 200:
+                return True, None
+            elif resp.status_code == 400:
+                return False, "Invalid Gemini key"
+            return None, f"Unexpected response: {resp.status_code}"
+        except Exception as e:
+            return None, f"Connection error: {e}"
+
+    def _verify_anthropic_key(self, key: str) -> Tuple[Optional[bool], Optional[str]]:
+        """Verify an Anthropic API key."""
+        try:
+            resp = _requests.get(
+                'https://api.anthropic.com/v1/models',
+                headers={
+                    'x-api-key': key,
+                    'anthropic-version': '2023-06-01'
+                },
+                timeout=VERIFICATION_TIMEOUT
+            )
+            if resp.status_code == 200:
+                return True, None
+            elif resp.status_code == 401:
+                return False, "Invalid Anthropic key"
             return None, f"Unexpected response: {resp.status_code}"
         except Exception as e:
             return None, f"Connection error: {e}"

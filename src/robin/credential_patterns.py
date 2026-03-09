@@ -286,10 +286,60 @@ class CredentialPatternEngine:
                 'tags': ['database', 'redis'],
                 'source': 'custom'
             },
+            # Gmail:Password combo
+            {
+                'id': 'custom-gmail-combo',
+                'name': 'Gmail Credentials',
+                'regex': r'[a-zA-Z0-9._%+-]+@gmail\.com\s*[:;,\s]+\s*[^\s]{6,}',
+                'confidence': 'high',
+                'category': 'credentials',
+                'provider': 'gmail',
+                'description': 'Gmail address and password pair',
+                'tags': ['darkweb', 'gmail', 'credentials'],
+                'source': 'custom'
+            },
+            # OpenAI API Key
+            {
+                'id': 'custom-openai-key',
+                'name': 'OpenAI API Key',
+                'regex': r'sk-[a-zA-Z0-9]{48}',
+                'confidence': 'high',
+                'category': 'api_keys',
+                'provider': 'openai',
+                'description': 'OpenAI API key (sk-...)',
+                'tags': ['api', 'ai', 'openai'],
+                'source': 'custom'
+            },
+            # Google Gemini / Google AI API Key
+            {
+                'id': 'custom-gemini-key',
+                'name': 'Google Gemini API Key',
+                'regex': r'AIzaSy[A-Za-z0-9_-]{33}',
+                'confidence': 'high',
+                'category': 'api_keys',
+                'provider': 'google',
+                'description': 'Google Gemini / AI Studio API key',
+                'tags': ['api', 'ai', 'google', 'gemini'],
+                'source': 'custom'
+            },
+            # Anthropic API Key
+            {
+                'id': 'custom-anthropic-key',
+                'name': 'Anthropic API Key',
+                'regex': r'sk-ant-api03-[a-zA-Z0-9\-_]{93,2048}',
+                'confidence': 'high',
+                'category': 'api_keys',
+                'provider': 'anthropic',
+                'description': 'Anthropic Claude API key',
+                'tags': ['api', 'ai', 'anthropic'],
+                'source': 'custom'
+            },
         ]
 
         initial_count = len(self.patterns)
+        print(f"LOADING CUSTOM PATTERNS. Current patterns: {initial_count}")
         for pattern in custom_patterns:
+            print(f"ADDING PATTERN: {pattern['id']}")
             self.patterns.append(pattern)
             self.categories[pattern['category']].append(pattern)
 
@@ -400,6 +450,7 @@ class CredentialPatternEngine:
             patterns_to_scan = [p for p in self.compiled_patterns if p['category'] in categories]
 
         for pattern in patterns_to_scan:
+            print(f"SCANNING WITH PATTERN: {pattern['id']}")
             # Check confidence level
             pattern_level = confidence_levels.get(pattern.get('confidence', 'medium'), 1)
             if pattern_level < min_level:
@@ -413,6 +464,7 @@ class CredentialPatternEngine:
             try:
                 for match in pattern['compiled_regex'].finditer(text):
                     value = match.group(0)
+                    print(f"MATCH FOUND FOR {pattern['id']}: {value}")
                     start_pos = match.start()
                     end_pos = match.end()
 

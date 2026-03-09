@@ -19,6 +19,33 @@ def test_extract_credentials():
     aws_findings = [f for f in findings if 'aws' in f.pattern_name.lower() or 'akia' in f.value.lower() or 'aws' in str(f.provider).lower()]
     assert len(aws_findings) > 0
 
+def test_extract_new_credentials():
+    engine = get_engine()
+    test_text = """
+    My email is testuser@gmail.com:password123
+    OpenAI key: sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789012345678912
+    Gemini key: AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ012345
+    Anthropic key: sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ012345678901234567890123456789012345678901234567890123456789
+    """
+    findings = engine.scan_text(test_text)
+
+    # Check for Gmail
+    gmail = [f for f in findings if f.pattern_id == 'custom-gmail-combo']
+    assert len(gmail) > 0
+    assert "testuser@gmail.com" in gmail[0].value
+
+    # Check for OpenAI
+    openai = [f for f in findings if f.pattern_id == 'custom-openai-key']
+    assert len(openai) > 0
+
+    # Check for Gemini
+    gemini = [f for f in findings if f.pattern_id == 'custom-gemini-key']
+    assert len(gemini) > 0
+
+    # Check for Anthropic
+    anthropic = [f for f in findings if f.pattern_id == 'custom-anthropic-key']
+    assert len(anthropic) > 0
+
 def test_entropy():
     # Test our entropy utility since _redact_value doesn't exist
     engine = get_engine()

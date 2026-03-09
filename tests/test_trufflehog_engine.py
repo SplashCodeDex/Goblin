@@ -63,6 +63,19 @@ def test_scan_text_detects_gitlab_token():
     assert any("GitLab" in f.detector_name for f in findings)
 
 
+def test_scan_text_detects_ai_keys():
+    engine = TruffleHogEngine(enable_verification=False)
+    text = """
+    OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz0123456789012345678912
+    ANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwxyz012345678901234567890123456789012345678901234567890123456789
+    GEMINI_API_KEY=AIzaSyabcdefghijklmnopqrstuvwxyz012345
+    """
+    findings = engine.scan_text(text)
+    assert any("OpenAI" in f.detector_name for f in findings)
+    assert any("Anthropic" in f.detector_name for f in findings)
+    assert any("Google" in f.detector_name for f in findings)
+
+
 def test_entropy_calculation():
     engine = TruffleHogEngine(enable_verification=False)
     low_entropy = engine._calculate_entropy("aaaaaaaaaa")
@@ -77,9 +90,9 @@ def test_redact_value():
     assert TruffleHogEngine._redact_value("short") == "*****"
 
 
-def test_verifier_registry_has_16_entries():
+def test_verifier_registry_has_sufficient_entries():
     engine = TruffleHogEngine(enable_verification=True)
-    assert len(engine._VERIFIER_MAP) >= 16
+    assert len(engine._VERIFIER_MAP) >= 19
 
 
 def test_verifier_registry_all_methods_exist():
@@ -114,7 +127,7 @@ def test_get_cache_stats_shows_verifiers():
     stats = engine.get_cache_stats()
     assert "supported_verifiers" in stats
     assert "verifier_count" in stats
-    assert stats["verifier_count"] >= 16
+    assert stats["verifier_count"] >= 19
 
 
 def test_get_engine_singleton():
