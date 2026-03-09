@@ -49,6 +49,14 @@ except ImportError as e:
     logger.warning(f"CI/CD Hunter not available: {e}")
     CICD_HUNTER_AVAILABLE = False
 
+# Import Auto-Pilot engine
+try:
+    from robin.auto_pilot import scout_instance
+    AUTOPILOT_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Auto-Pilot engine not available: {e}")
+    AUTOPILOT_AVAILABLE = False
+
 app = FastAPI(title="Robin API", version="1.0.0")
 
 @app.on_event("startup")
@@ -798,6 +806,63 @@ async def api_credential_stats() -> Dict[str, Any]:
             "patterns": pattern_stats,
             "trufflehog_cache": trufflehog_stats,
             "breach_cache": breach_stats,
+            "ml_stats": ml_stats,
+            "leaklooker_stats": leaklooker_stats,
+            "dorking": dorking_stats,
+            "autopilot_supported": AUTOPILOT_AVAILABLE
+        }
+    except Exception as e:
+        logger.error(f"Stats error: {e}")
+        return {"error": str(e)}
+
+# ========== AUTOPILOT ENDPOINTS ==========
+
+@app.post("/api/autopilot/start")
+async def start_autopilot():
+    if not AUTOPILOT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Auto-Pilot engine not available")
+
+    if scout_instance.is_running:
+        return {"status": "already_running"}
+
+    # Start the background tasks
+    # Note: In a real production app, we'd use a background task manager like Celery,
+    # but for this tactical tool, we'll use the AsyncGenerator pattern.
+    scout_instance.is_running = True
+    logger.info("Auto-Pilot Engage: Engine started via API.")
+    return {"status": "started"}
+
+@app.post("/api/autopilot/stop")
+async def stop_autopilot():
+    if not AUTOPILOT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Auto-Pilot engine not available")
+
+    scout_instance.stop()
+    logger.info("Auto-Pilot Disengage: Engine stopped via API.")
+    return {"status": "stopped"}
+
+@app.get("/api/autopilot/stream")
+async def autopilot_stream():
+    """Real-time SSE stream of findings from the Auto-Pilot."""
+    if not AUTOPILOT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Auto-Pilot engine not available")
+
+    async def event_generator():
+        try:
+            # We already have start_engine which is an async generator
+            async for data in scout_instance.start_engine():
+                yield {
+                    "event": "finding",
+                    "data": data
+                }
+        except Exception as e:
+            logger.error(f"Autopilot stream error: {e}")
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": str(e)})
+            }
+
+    return EventSourceResponse(event_generator())
             "ml_filter": ml_stats,
             "leaklooker": leaklooker_stats,
             "github_dorking": dorking_stats,

@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/hooks/use-toast"
-import { verifyCredentials, breachLookupBulk, githubDorks, githubGists, credentialStats, extractArtifacts } from "@/lib/api"
-import { ShieldAlert, Key, Search, Database, Github, FileText, Loader2, RefreshCw, Cpu, Download, CheckCircle, XCircle, HardDriveDownload } from "lucide-react"
+import { verifyCredentials, breachLookupBulk, githubDorks, githubGists, credentialStats, extractArtifacts, startAutoPilot, stopAutoPilot, API_BASE } from "@/lib/api"
+import { ShieldAlert, Key, Search, Database, Github, FileText, Loader2, RefreshCw, Cpu, Download, CheckCircle, XCircle, HardDriveDownload, Rocket, Ban } from "lucide-react"
 
 export default function CredentialsDashboard() {
     const { toast } = useToast()
@@ -40,6 +40,11 @@ export default function CredentialsDashboard() {
     const [huntWorkers, setHuntWorkers] = useState(2)
     const [huntStatus, setHuntStatus] = useState<"idle" | "running" | "done" | "error">("idle")
     const [huntEvents, setHuntEvents] = useState<any[]>([])
+
+    // Auto-Pilot State
+    const [autoPilotStatus, setAutoPilotStatus] = useState<"idle" | "running" | "stopping">("idle")
+    const [autoPilotEvents, setAutoPilotEvents] = useState<any[]>([])
+    const [autoPilotFindingsCount, setAutoPilotFindingsCount] = useState(0)
 
     useEffect(() => {
         loadStats()
@@ -193,6 +198,77 @@ export default function CredentialsDashboard() {
         URL.revokeObjectURL(url)
     }
 
+    // ========== AUTO-PILOT LOGIC ==========
+    const toggleAutoPilot = async () => {
+        if (autoPilotStatus === "running") {
+            try {
+                setAutoPilotStatus("stopping")
+                await stopAutoPilot()
+                toast({ description: "Auto-Pilot stop signal sent" })
+            } catch (e: any) {
+                toast({ description: e.message, variant: "destructive" })
+                setAutoPilotStatus("running")
+            }
+            return
+        }
+
+        setAutoPilotStatus("running")
+        setAutoPilotEvents([])
+        setAutoPilotFindingsCount(0)
+
+        try {
+            await startAutoPilot()
+            toast({ description: "Auto-Pilot Engine Started" })
+
+            const eventSourceUrl = `${API_BASE}/autopilot/stream`
+            const res = await fetch(eventSourceUrl)
+
+            if (!res.body) throw new Error("No response body")
+            const reader = res.body.getReader()
+            const decoder = new TextDecoder()
+
+            let buffer = ""
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+
+                buffer += decoder.decode(value, { stream: true })
+                const lines = buffer.split("\n")
+                buffer = lines.pop() || ""
+
+                let currentEvent = ""
+                for (const line of lines) {
+                    if (line.startsWith("event: ")) {
+                        currentEvent = line.substring(7).trim()
+                    } else if (line.startsWith("data: ")) {
+                        try {
+                            const dataStr = line.substring(6).trim()
+                            const eventData = JSON.parse(dataStr)
+
+                            if (currentEvent === "message" || currentEvent === "finding") {
+                                setAutoPilotEvents(prev => [eventData, ...prev])
+                                if (eventData.type === "finding") {
+                                    setAutoPilotFindingsCount(c => c + 1)
+                                }
+                            } else if (currentEvent === "error") {
+                                console.error("SSE Error:", eventData.error)
+                                toast({ title: "Auto-Pilot Error", description: eventData.error, variant: "destructive" })
+                            }
+                        } catch (e) {
+                            console.error("Failed to parse SSE data", e, line)
+                        }
+                    }
+                }
+            }
+            setAutoPilotStatus("idle")
+            toast({ description: "Auto-Pilot engine finished" })
+        } catch (e: any) {
+            console.error(e)
+            setAutoPilotStatus("idle")
+            toast({ description: e?.message || "Auto-Pilot failure", variant: "destructive" })
+        }
+    }
+
     // ========== CI/CD HUNTER SSR LOGIC ==========
     const startCicdHunt = async () => {
         if (huntStatus === "running") return;
@@ -263,9 +339,27 @@ export default function CredentialsDashboard() {
                     </h1>
                     <p className="text-zinc-400 mt-2">Advanced hunting, verification, and OSINT for leaked credentials.</p>
                 </div>
-                <Button onClick={loadStats} variant="outline" size="icon">
-                    <RefreshCw className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center gap-3">
+                    <Button
+                        onClick={toggleAutoPilot}
+                        className={`${autoPilotStatus === 'running'
+                            ? 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700'
+                            : 'bg-gradient-to-r from-red-600 to-red-800 hover:from-red-500 hover:to-red-700 border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.3)]'}
+                            text-white flex items-center gap-2 border px-6 py-5 h-auto font-bold transition-all duration-300 group`}
+                        disabled={autoPilotStatus === 'stopping'}
+                    >
+                        {autoPilotStatus === 'running' ? (
+                            <><Loader2 className="w-5 h-5 animate-spin" /> STOP SEARCH ENGINE</>
+                        ) : autoPilotStatus === 'stopping' ? (
+                            <><Loader2 className="w-5 h-5 animate-spin" /> DISENGAGING...</>
+                        ) : (
+                            <><Rocket className="w-5 h-5 group-hover:animate-bounce" /> ENGAGE AUTO-PILOT</>
+                        )}
+                    </Button>
+                    <Button onClick={loadStats} variant="outline" size="icon" className="h-[50px] w-[50px]">
+                        <RefreshCw className="w-5 h-5" />
+                    </Button>
+                </div>
             </div>
 
             {stats && (
@@ -305,6 +399,7 @@ export default function CredentialsDashboard() {
                     <TabsTrigger value="dorks" className="flex items-center gap-2 py-2"><Github className="w-4 h-4" /> GitHub </TabsTrigger>
                     <TabsTrigger value="gists" className="flex items-center gap-2 py-2"><FileText className="w-4 h-4" /> Gists</TabsTrigger>
                     <TabsTrigger value="cicd" className="flex items-center gap-2 py-2"><HardDriveDownload className="w-4 h-4" /> CI/CD Logs</TabsTrigger>
+                    <TabsTrigger value="autopilot" className="flex items-center gap-2 py-2 text-red-400 font-bold"><Rocket className="w-4 h-4" /> AUTO-PILOT</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="verify">
@@ -614,6 +709,141 @@ export default function CredentialsDashboard() {
                     </Card>
                 </TabsContent>
 
+                <TabsContent value="autopilot">
+                    <Card className="border-zinc-800 bg-zinc-900/50">
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2 text-red-500">
+                                    <Rocket className="w-6 h-6" />
+                                    Auto-Pilot Scout Engine
+                                </CardTitle>
+                                <CardDescription>
+                                    Autonomous credential discovery using Flash-Watcher (Gists) and Deep-Diver (Scheduled Dorks).
+                                </CardDescription>
+                            </div>
+                            <div className="flex items-center gap-4 font-mono text-xs">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-zinc-500">FINDINGS:</span>
+                                    <span className="text-red-500 font-bold">{autoPilotFindingsCount}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-zinc-500">STATUS:</span>
+                                    <span className={autoPilotStatus === 'running' ? 'text-green-500 animate-pulse' : 'text-zinc-500'}>
+                                        {autoPilotStatus.toUpperCase()}
+                                    </span>
+                                </div>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="bg-black/80 border border-zinc-800 rounded-lg p-6 min-h-[500px] h-[600px] overflow-y-auto font-mono text-sm shadow-inner relative">
+                                {!autoPilotStatus.startsWith('running') && autoPilotEvents.length === 0 && (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-600 gap-4 opacity-50">
+                                        <Rocket className="w-16 h-16" />
+                                        <p className="text-lg">Engine Standby. Click 'START AUTO-PILOT' to begin hunting.</p>
+                                    </div>
+                                )}
+
+                                <div className="space-y-4">
+                                    {autoPilotEvents.map((evt, i) => {
+                                        const isFinding = evt.type === 'finding';
+                                        const findingData = isFinding ? evt.data : null;
+                                        const confidenceColor = findingData?.confidence === 'critical' ? 'text-red-500' : findingData?.confidence === 'high' ? 'text-orange-500' : 'text-yellow-500';
+
+                                        return (
+                                            <div key={i} className={`p-4 rounded-lg border transition-all duration-500 ${isFinding
+                                                ? 'bg-red-500/5 border-red-500/30 text-red-200 shadow-[0_0_20px_rgba(239,68,68,0.05)] animate-in fade-in slide-in-from-right-4'
+                                                : evt.type === 'message'
+                                                    ? 'bg-zinc-900/40 border-zinc-800 text-zinc-400 border-l-2 border-l-blue-500/50'
+                                                    : 'bg-zinc-900/40 border-zinc-800 text-zinc-400'
+                                                }`}>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[10px] font-mono text-zinc-600">
+                                                            [{new Date().toLocaleTimeString()}]
+                                                        </span>
+                                                        <span className={`text-[10px] font-bold uppercase py-0.5 px-2 rounded tracking-tighter ${isFinding ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-500'
+                                                            }`}>
+                                                            {isFinding ? 'CRITICAL FINDING' : evt.label || 'SYSTEM'}
+                                                        </span>
+                                                    </div>
+                                                    {isFinding && findingData?.verified && (
+                                                        <span className="flex items-center gap-1 text-[10px] font-bold text-green-400 animate-pulse bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">
+                                                            <CheckCircle className="w-3 h-3" /> VERIFIED ACTIVE
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {evt.type === 'message' && (
+                                                    <div className="flex items-start gap-2 py-1">
+                                                        <Loader2 className="w-3 h-3 animate-spin mt-1 text-blue-500" />
+                                                        <p className="text-sm italic opacity-80">{evt.text}</p>
+                                                    </div>
+                                                )}
+
+                                                {isFinding ? (
+                                                    <div className="space-y-2">
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <h4 className="font-bold text-lg flex items-center gap-2">
+                                                                    <ShieldAlert className="w-5 h-5 text-red-500" />
+                                                                    {findingData.type?.replace(/_/g, ' ').toUpperCase()}
+                                                                </h4>
+                                                                <p className="text-xs text-zinc-500 mt-1 font-mono">{evt.label}</p>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <span className={`text-xs font-bold ${confidenceColor}`}>
+                                                                    CONFIDENCE: {(findingData.confidence || 'unknown').toUpperCase()}
+                                                                </span>
+                                                                {findingData.provider && (
+                                                                    <p className="text-[10px] text-zinc-600 uppercase">Provider: {findingData.provider}</p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="mt-3 relative">
+                                                            <div className="font-mono text-sm break-all bg-black/60 p-3 rounded-md border border-red-500/10 text-red-400/90 group relative overflow-hidden">
+                                                                <div className="absolute inset-0 bg-red-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                                                                {findingData.value}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex flex-wrap gap-2 mt-3">
+                                                            <span className="text-[10px] bg-zinc-950 px-2 py-1 rounded border border-zinc-800 text-zinc-500 flex items-center gap-1">
+                                                                <Search className="w-3 h-3" /> {findingData.tool || 'Engine'}
+                                                            </span>
+                                                            <a
+                                                                href={findingData.source}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className="text-[10px] bg-zinc-950 px-2 py-1 rounded border border-zinc-800 text-blue-400 hover:border-blue-500/50 transition-colors flex items-center gap-1"
+                                                            >
+                                                                <FileText className="w-3 h-3" /> SOURCE URL &rarr;
+                                                            </a>
+                                                        </div>
+
+                                                        {findingData.enrichment?.breach_count > 0 && (
+                                                            <div className="mt-3 p-2 bg-red-950/20 border border-red-900/30 rounded text-xs animate-in zoom-in-95 duration-700">
+                                                                <span className="font-bold text-red-400">🚨 BREACH ALERT:</span> Email found in <b>{findingData.enrichment.breach_count}</b> known leaks.
+                                                                Latest: <i>{findingData.enrichment.latest_breach}</i>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm font-mono">{evt.message}</p>
+                                                )}
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="flex justify-between items-center text-xs text-zinc-500">
+                                <p>Note: Auto-Pilot uses a Dual-Track strategy with rate-limit jitters.</p>
+                                <p>{autoPilotEvents.filter(e => e.event === 'finding').length} findings this session</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
                 <TabsContent value="cicd">
                     <Card className="border-zinc-800 bg-zinc-900/50">
                         <CardHeader>
@@ -691,6 +921,6 @@ export default function CredentialsDashboard() {
                 </TabsContent>
 
             </Tabs>
-        </div>
+        </div >
     )
 }

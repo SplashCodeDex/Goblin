@@ -79,6 +79,13 @@ def renew_tor_identity(control_port=TOR_CONTROL_PORT, password=None):
     except Exception as e:
         logger.error(f"Failed to rotate Tor identity: {e}")
 
+def force_rotate_identity():
+    """
+    Exposed helper to force identity rotation from other modules.
+    """
+    from .config import TOR_PASSWORD
+    renew_tor_identity(password=TOR_PASSWORD)
+
 def _check_rotate(rotate_interval=5):
     global request_counter
     with counter_lock:

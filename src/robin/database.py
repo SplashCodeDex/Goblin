@@ -1,7 +1,7 @@
 import sqlite3
 import json
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 # Get the directory of the current script
@@ -72,6 +72,7 @@ def initialize_database():
         url TEXT,
         title TEXT,
         content TEXT,
+        content_hash TEXT,         -- SimHash for fuzzy deduplication
         summary TEXT,
         relevance_score REAL DEFAULT 0.0,
         patterns_found TEXT,       -- JSON list of discovered patterns
@@ -278,6 +279,31 @@ def get_unread_notifications_count() -> int:
     count = cursor.fetchone()[0]
     conn.close()
     return count
+
+def check_for_near_duplicates(content_hash: str, threshold: float = 0.9) -> Optional[Dict[str, Any]]:
+    """
+    Checks the database for any leaks that are near-duplicates of the provided hash.
+    Returns the metadata of the matching leak if found.
+    """
+    if not content_hash:
+        return None
+        
+    from .dedup import ContentHasher
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # We select all hashes to compare (for small/medium DBs this is fine)
+    # For very large DBs, we'd use a more optimized LSH (Locality Sensitive Hashing) approach.
+    cursor.execute("SELECT id, source_name, external_id, content_hash, title FROM leaks WHERE content_hash IS NOT NULL")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    for row in rows:
+        db_hash = row['content_hash']
+        if ContentHasher.is_near_duplicate(content_hash, db_hash, threshold):
+            return dict(row)
+            
+    return None
 
 if __name__ == "__main__":
     print("Initializing Robin database...")
