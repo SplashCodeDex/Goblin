@@ -11,7 +11,7 @@ from robin.credential_patterns import CredentialPatternEngine
 from robin.github_dorking import DORK_CATEGORIES, _rate_limited_get, GITHUB_API, GITHUB_DORK_QUERIES
 from robin.trufflehog_engine import get_engine as get_trufflehog
 from robin.ml_filter import get_filter as get_ml_filter
-from robin.breach_lookup import find_breaches
+from robin.breach_lookup import lookup_email as find_breaches
 from robin.leaklooker_engine import scan_databases
 from robin.cicd_hunter import sweep_all_susceptible_repos
 from robin.paste_scraper import Watcher as PasteWatcher

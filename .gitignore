@@ -187,3 +187,5 @@ commit_diff.txt
 push_error_full.txt
 push_error_full2.txt
 push_error.txt
+pyproject.toml
+*.txt

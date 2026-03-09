@@ -28,7 +28,7 @@ try:
     H8MAIL_AVAILABLE = True
 except ImportError:
     H8MAIL_AVAILABLE = False
-    print("Warning: h8mail not installed. Breach lookup features will be disabled.")
+    logging.getLogger(__name__).warning("h8mail not installed. Breach lookup features will be disabled.")
 
 
 @dataclass

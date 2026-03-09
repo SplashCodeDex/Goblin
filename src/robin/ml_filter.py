@@ -5,6 +5,7 @@ Uses machine learning to reduce false positives in credential detection
 
 import os
 import re
+import logging
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +17,9 @@ try:
     CREDDIGGER_AVAILABLE = True
 except ImportError:
     CREDDIGGER_AVAILABLE = False
-    print("Warning: credentialdigger not installed. ML filtering will be disabled.")
+    logging.getLogger(__name__).warning("credentialdigger not installed. ML filtering will be disabled.")
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -48,7 +51,7 @@ class MLFilterEngine:
             return
 
         if not CREDDIGGER_AVAILABLE:
-            print("Warning: Credential Digger not available. Using rule-based filtering only.")
+            logger.warning("Credential Digger not available. Using rule-based filtering only.")
             self.initialized = True
             return
 
@@ -60,21 +63,21 @@ class MLFilterEngine:
             # Load pre-trained models
             try:
                 self.path_model = PathModel()
-                print("Path model loaded successfully")
+                logger.info("Path model loaded successfully")
             except Exception as e:
-                print(f"Warning: Could not load path model: {e}")
+                logger.warning(f"Could not load path model: {e}")
 
             try:
                 self.snippet_model = SnippetModel()
-                print("Snippet model loaded successfully")
+                logger.info("Snippet model loaded successfully")
             except Exception as e:
-                print(f"Warning: Could not load snippet model: {e}")
+                logger.warning(f"Could not load snippet model: {e}")
 
             self.initialized = True
 
         except Exception as e:
-            print(f"Error initializing Credential Digger: {e}")
-            print("Falling back to rule-based filtering")
+            logger.error(f"Error initializing Credential Digger: {e}", exc_info=True)
+            logger.warning("Falling back to rule-based filtering")
             self.initialized = True
 
     def _load_false_positive_patterns(self) -> List[Dict]:
