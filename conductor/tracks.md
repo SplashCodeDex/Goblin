@@ -4,7 +4,7 @@
 - [ ] **Track: Placeholder Track (Example)**
   Link: [./tracks/placeholder_20250309/](./tracks/placeholder_20250309/)
 
-- [ ] **Track: Robust Paste Scraping with Cloudflare Bypass & Advanced Tor Rotation**
+- [x] **Track: Robust Paste Scraping with Cloudflare Bypass & Advanced Tor Rotation**
   Link: [./tracks/invisible_scraper_20250309/](./tracks/invisible_scraper_20250309/)
 
 ## Documentation & Chores
