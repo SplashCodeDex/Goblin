@@ -67,8 +67,8 @@ def test_scan_text_detects_ai_keys():
     engine = TruffleHogEngine(enable_verification=False)
     text = """
     OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz0123456789012345678912
-    ANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwxyz012345678901234567890123456789012345678901234567890123456789
-    GEMINI_API_KEY=AIzaSyabcdefghijklmnopqrstuvwxyz012345
+    ANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890123456789012345678901234567890AB
+    GEMINI_API_KEY=AIzaSyabcdefghijklmnopqrstuvwxyz0123456
     """
     findings = engine.scan_text(text)
     assert any("OpenAI" in f.detector_name for f in findings)

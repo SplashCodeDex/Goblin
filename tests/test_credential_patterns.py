@@ -24,8 +24,8 @@ def test_extract_new_credentials():
     test_text = """
     My email is testuser@gmail.com:password123
     OpenAI key: sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789012345678912
-    Gemini key: AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ012345
-    Anthropic key: sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ012345678901234567890123456789012345678901234567890123456789
+    Gemini key: AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ0123456
+    Anthropic key: sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234567890123456789012345678901234567890AB
     """
     findings = engine.scan_text(test_text)
 
