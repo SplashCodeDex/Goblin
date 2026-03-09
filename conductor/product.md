@@ -10,8 +10,8 @@ Goblin is an advanced, AI-driven Dark Web OSINT (Open Source Intelligence) platf
 - Privacy-conscious individuals tracking their digital footprint
 
 ## Core Value Propositions
-- **Automated Dark Web Discovery:** Native Tor integration for deep-web scraping.
-- **Immediate Leak Monitoring:** Real-time tracking of paste sites, dump bins, and Telegram log aggregators.
+- **Automated Dark Web Discovery:** Native Tor integration with advanced circuit rotation for resilient deep-web scraping.
+- **Immediate Leak Monitoring:** Real-time tracking of paste sites, dump bins, and Telegram log aggregators with adaptive Cloudflare bypass.
 - **AI-Powered Analysis:** Multi-model LLM support (OpenAI, Anthropic, Ollama) for intelligent data extraction and classification.
 - **Comprehensive Search:** Unified engine querying multiple dark-web search endpoints.
 - **Breach Correlation:** Integration with HIBP, IntelX, and other breach repositories.

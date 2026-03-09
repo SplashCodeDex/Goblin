@@ -11,6 +11,9 @@
 - **Tor integration:** Native SOCKS proxy routing for all dark-web requests.
 - **Scraping Engine:** BeautifulSoup4, Requests (with retry logic), and specialized handlers.
 - **Telegram Integration:** Telethon-based monitoring for specialized log channels.
+- **Invisible Scraper Engine:** Adaptive switching between high-speed requests and 'undetected-chromedriver' for bypassing anti-bot measures (Cloudflare).
+- **Advanced Tor Management:** Programmatic identity rotation and circuit health monitoring.
+- **Stealth Optimization:** Canvas fingerprint randomization and dynamic User-Agent rotation.
 - **Hybrid Ingestion Engine:** Background 'Watcher' mode for persistent monitoring of hot leaks.
 - **OCR & Document Extraction:** Pytesseract (for images) and pdfplumber (for PDFs).
 - **ML & AI Integration:** Support for OpenAI, Anthropic, and local Ollama models for analyzing data.
