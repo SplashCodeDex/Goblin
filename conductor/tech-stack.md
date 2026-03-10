@@ -6,6 +6,7 @@
 - **Next.js (Frontend):** React-based framework for the dashboard and search interface.
 - **Tailwind CSS & Shadcn/UI:** Responsive and modern UI/UX design.
 - **SQLite:** Local database (robin.db) for storing search history and discovered leaks.
+- **Streaming Storage:** Compressed (.gz) blob management system for handling large leak contents with low memory overhead.
 
 ## OSINT & Intelligence
 - **Tor integration:** Native SOCKS proxy routing for all dark-web requests.
@@ -17,6 +18,7 @@
 - **Hybrid Ingestion Engine:** Background 'Watcher' mode for persistent monitoring of hot leaks.
 - **OCR & Document Extraction:** Pytesseract (for images) and pdfplumber (for PDFs).
 - **ML & AI Integration:** Support for OpenAI, Anthropic, and local Ollama models for analyzing data.
+- **Fuzzy Deduplication:** SimHash implementation for detecting near-duplicate leaks and preventing redundant storage/analysis.
 
 ## Identity & API Management
 - **GitHub Dorking:** Integration via GitHub search API.
