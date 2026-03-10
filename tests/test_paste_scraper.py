@@ -8,11 +8,10 @@ class TestPasteScraper(unittest.TestCase):
         # Ensure database is initialized
         initialize_database()
 
-    @patch('src.robin.paste_scraper.PasteSource._get_request')
-    def test_pastebin_handler_recent(self, mock_get):
+    @patch('src.robin.paste_scraper.PasteSource._get_request_adaptive')
+    def test_pastebin_handler_recent(self, mock_adaptive):
         # Mock HTML response for Pastebin archive
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.text = """
+        mock_adaptive.return_value = """
         <table class="maintable">
             <tr><th>Title</th><th>Added</th><th>Author</th><th>Syntax</th></tr>
             <tr>
@@ -31,12 +30,16 @@ class TestPasteScraper(unittest.TestCase):
         self.assertEqual(recent[0]['id'], 'abc123')
         self.assertEqual(recent[0]['title'], 'Test Paste')
 
-    @patch('src.robin.paste_scraper.PastebinHandler.scrape_paste')
+    @patch('src.robin.paste_scraper.PastebinHandler.scrape_paste_stream')
     @patch('src.robin.paste_scraper.PastebinHandler.get_recent')
-    def test_watcher_processing(self, mock_recent, mock_scrape):
+    def test_watcher_processing(self, mock_recent, mock_stream):
         # Mock finding a new paste
         mock_recent.return_value = [{'id': 'new123', 'url': 'http://test.com/new123', 'title': 'Leak Test'}]
-        mock_scrape.return_value = "password=12345\napi_key=sk-1234567890abcdef1234567890abcdef"
+        
+        def side_effect(paste_id, callback):
+            callback("password=12345\napi_key=sk-1234567890abcdef1234567890abcdef")
+            return True
+        mock_stream.side_effect = side_effect
         
         scraper = PasteScraper([PastebinHandler()])
         watcher = Watcher(scraper, poll_interval=1)

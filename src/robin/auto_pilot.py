@@ -39,8 +39,8 @@ class AutoPilotScout:
     def _flatten_dorks(self) -> List[str]:
         """Flattens DORK_CATEGORIES into a list prioritized by 'Most Wanted'."""
         prioritized = []
-        # Support both new and old dork formats
-        dork_source = GITHUB_DORK_QUERIES if hasattr(self, 'GITHUB_DORK_QUERIES') else DORK_CATEGORIES
+        # Use the imported dork categories
+        dork_source = GITHUB_DORK_QUERIES
 
         # Priority 1: Email/Pass and API Keys
         for key in ["api_keys", "email_credentials", "most_wanted"]:
@@ -60,7 +60,7 @@ class AutoPilotScout:
                 logger.info("Auto-Pilot: Scanning for exposed databases...")
                 # We'll use a curated set of popular DB types
                 for db_type in ["mongodb", "elastic", "s3"]:
-                    results = await asyncio.to_thread(scan_databases, db_type, limit=5)
+                    results = await asyncio.to_thread(scan_databases, db_type, max_results=5)
                     for res in results:
                         await self.findings_queue.put({
                             "type": "db_leak",
@@ -78,7 +78,7 @@ class AutoPilotScout:
         while self.is_running:
             try:
                 logger.info("Auto-Pilot: Sweeping CI/CD logs...")
-                hits = await asyncio.to_thread(sweep_all_susceptible_repos, limit=5)
+                hits = await asyncio.to_thread(sweep_all_susceptible_repos, max_repos=5)
                 for hit in hits:
                     await self.findings_queue.put({
                         "type": "cicd_leak",
@@ -93,18 +93,22 @@ class AutoPilotScout:
 
     async def get_paste_stream(self):
         """Monitors Pastebin and Telegram channels."""
-        watcher = PasteWatcher()
+        from robin.paste_scraper import PasteScraper, PastebinHandler, TelegramHandler
+        scraper = PasteScraper([PastebinHandler(), TelegramHandler()])
+        watcher = PasteWatcher(scraper)
+        
         while self.is_running:
             try:
-                # Watcher is synchronous in current implementation, wrap it
-                pastes = await asyncio.to_thread(watcher.get_recent_pastes, limit=10)
-                for p in pastes:
-                    await self.findings_queue.put({
-                        "type": "paste_event",
-                        "data": p,
-                        "label": f"Paste: {p.get('source')}",
-                        "timestamp": datetime.utcnow().isoformat()
-                    })
+                # Watcher in paste_scraper.py has monitor_all_recent
+                results = await asyncio.to_thread(scraper.monitor_all_recent)
+                for source_name, pastes in results.items():
+                    for p in pastes:
+                        await self.findings_queue.put({
+                            "type": "paste_event",
+                            "data": p,
+                            "label": f"Paste: {source_name}",
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
                 await asyncio.sleep(300)
             except Exception as e:
                 logger.error(f"Paste-Watcher error: {e}")

@@ -358,6 +358,8 @@ def search_gists(query: str, limit: int = 20) -> List[Dict]:
 
 # ─── Convenience / statistics ────────────────────────────────────────────
 
+GITHUB_DORK_QUERIES = DORK_CATEGORIES
+
 def get_dork_categories() -> Dict[str, int]:
     """Return available dork categories and their query counts."""
     return {cat: len(dorks) for cat, dorks in DORK_CATEGORIES.items()}

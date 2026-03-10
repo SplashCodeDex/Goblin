@@ -10,6 +10,6 @@
 
 ---
 
-- [ ] **Track: AutoPilot Bug Fixes (20250310)**
+- [x] **Track: AutoPilot Bug Fixes (20250310)**
 *Link: [./tracks/autopilot_fixes_20250310/](./tracks/autopilot_fixes_20250310/)*
 

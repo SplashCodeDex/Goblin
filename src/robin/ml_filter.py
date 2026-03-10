@@ -80,6 +80,40 @@ class MLFilterEngine:
             logger.warning("Falling back to rule-based filtering")
             self.initialized = True
 
+    def is_sensitive(self, content: str) -> bool:
+        """
+        Main entry point for noise-gating.
+        Checks if content is likely to contain sensitive information.
+        """
+        if not content or len(content.strip()) < 10:
+            return False
+
+        # 1. Rule-based pre-filter (Fast)
+        for pattern_dict in self.common_false_positives:
+            if re.search(pattern_dict['pattern'], content, re.IGNORECASE):
+                if pattern_dict.get('is_fp', True):
+                    return False
+
+        # 2. ML-based filter (Credential Digger)
+        if self.initialized and self.snippet_model:
+            try:
+                # Credential Digger's SnippetModel expects a list of snippets
+                # and returns a list of predictions (0 for FP, 1 for TP)
+                # We'll take a few lines from the content as a sample
+                sample_lines = content.splitlines()[:50]
+                sample = "\n".join(sample_lines)
+                
+                # Note: The exact API for SnippetModel might vary depending on version
+                # Usually it's model.predict([snippet])
+                prediction = self.snippet_model.predict([sample])
+                if prediction and prediction[0] == 0:
+                    return False
+            except Exception as e:
+                logger.debug(f"ML prediction failed: {e}")
+
+        # Default to True if no strong evidence of FP
+        return True
+
     def _load_false_positive_patterns(self) -> List[Dict]:
         """Load common false positive patterns"""
         return [
@@ -348,6 +382,10 @@ def get_engine() -> MLFilterEngine:
         _engine = MLFilterEngine()
         _engine.initialize()
     return _engine
+
+
+# Alias for compatibility with auto_pilot
+get_filter = get_engine
 
 
 # Convenience functions

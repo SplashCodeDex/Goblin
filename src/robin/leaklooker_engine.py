@@ -171,3 +171,7 @@ def get_engine() -> LeakLookerEngine:
 def scan_exposed_databases(query: str, max_results: int = 100) -> List[ExposedDatabase]:
     """Scan for exposed databases"""
     return get_engine().scan_exposed_databases(query, max_results)
+
+
+# Alias for compatibility with auto_pilot
+scan_databases = scan_exposed_databases

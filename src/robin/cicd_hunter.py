@@ -17,6 +17,8 @@ GITHUB_API = "https://api.github.com"
 GITHUB_RATE_LIMIT_PAUSE = 2
 GITHUB_REQUEST_TIMEOUT = 15
 
+logger = logging.getLogger(__name__)
+
 def _get_headers() -> Dict[str, str]:
     """Build GitHub API request headers."""
     headers = {"Accept": "application/vnd.github.v3+json"}
@@ -217,6 +219,9 @@ def start_cicd_sweep(max_repos: int = 10, max_workers: int = 2) -> List[Dict]:
                 logger.error(f"Executor failed on repo: {e}")
 
     return results
+
+# Alias for compatibility with auto_pilot
+sweep_all_susceptible_repos = start_cicd_sweep
 
 if __name__ == "__main__":
     # Test script locally
