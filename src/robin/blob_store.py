@@ -64,13 +64,8 @@ def get_leak_content(leak_row: dict) -> Optional[str]:
     """
     Unified helper to get content whether it's in DB or in a Blob.
     """
-    if leak_row.get('content'):
-        return leak_row['content']
-    
-    # Check if we have a blob reference in patterns_found or another field
-    # (Assuming we might store blob path in 'content' if it starts with 'data/blobs/')
-    content_ref = leak_row.get('content', '')
-    if content_ref and content_ref.startswith("data/blobs/"):
-        return BlobStore.read_blob(content_ref)
+    content = leak_row.get('content', '')
+    if content and content.startswith("data/blobs/"):
+        return BlobStore.read_blob(content)
         
-    return None
+    return content if content else None

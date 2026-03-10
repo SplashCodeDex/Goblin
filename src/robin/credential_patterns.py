@@ -14,6 +14,10 @@ from dataclasses import dataclass
 from collections import defaultdict
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 @dataclass
 class CredentialMatch:
     """Represents a detected credential match"""
@@ -38,6 +42,7 @@ class CredentialPatternEngine:
         self.patterns: List[Dict] = []
         self.compiled_patterns: List[Dict] = []
         self.allowlist_patterns: List[re.Pattern] = []
+        self.mega_keyword_regex: Optional[re.Pattern] = None
         self.categories: Dict[str, List[Dict]] = defaultdict(list)
         self.loaded = False
 
@@ -65,7 +70,7 @@ class CredentialPatternEngine:
         yaml_path = Path(__file__).parent.parent.parent / "vendor" / "secrets-patterns-db" / "db" / "rules-stable.yml"
 
         if not yaml_path.exists():
-            print(f"Warning: Secrets Patterns DB not found at {yaml_path}")
+            logger.warning(f"Secrets Patterns DB not found at {yaml_path}")
             return
 
         try:
@@ -73,18 +78,36 @@ class CredentialPatternEngine:
                 data = yaml.safe_load(f)
 
             if not data or 'patterns' not in data:
-                print("Warning: Invalid Secrets Patterns DB format")
+                logger.warning("Invalid Secrets Patterns DB format")
                 return
 
-            for pattern in data['patterns']:
-                # Extract regex properly. The 'pattern' key may be a dictionary containing 'regex'
+            for item in data['patterns']:
+                pattern = item.get('pattern', {}) if isinstance(item, dict) and 'pattern' in item else item
+                
+                # Extract regex properly
                 regex_val = pattern.get('regex')
                 if not regex_val:
-                    pat_val = pattern.get('pattern', '')
-                    if isinstance(pat_val, dict):
-                        regex_val = pat_val.get('regex', '')
-                    else:
-                        regex_val = pat_val
+                    regex_val = pattern.get('pattern', '') # Fallback for different formats
+
+                # Extract potential keywords from name or regex for pre-filtering
+                keywords = []
+                if pattern.get('name'):
+                    name_words = pattern.get('name').split()
+                    if name_words:
+                        first_word = name_words[0].lower()
+                        if len(first_word) > 2:
+                            keywords.append(first_word)
+                
+                # Also try to extract from regex prefix like (?:prefix)
+                try:
+                    # Look for literal prefix patterns like (?:keyword)
+                    prefix_match = re.search(r'\(\?::?([a-zA-Z0-9_-]+)\)', regex_val)
+                    if prefix_match:
+                        prefix = prefix_match.group(1).lower()
+                        if len(prefix) > 2:
+                            keywords.append(prefix)
+                except:
+                    pass
 
                 pattern_entry = {
                     'id': pattern.get('id', pattern.get('name', 'unknown')),
@@ -94,6 +117,7 @@ class CredentialPatternEngine:
                     'category': self._normalize_category(pattern.get('category', 'credentials')),
                     'provider': pattern.get('provider'),
                     'description': pattern.get('description', ''),
+                    'keywords': keywords,
                     'tags': pattern.get('tags', []),
                     'source': 'secrets-patterns-db'
                 }
@@ -102,17 +126,17 @@ class CredentialPatternEngine:
                     self.patterns.append(pattern_entry)
                     self.categories[pattern_entry['category']].append(pattern_entry)
 
-            print(f"Loaded {len(self.patterns)} patterns from Secrets Patterns DB")
+            logger.info(f"Loaded {len(self.patterns)} patterns from Secrets Patterns DB")
 
         except Exception as e:
-            print(f"Error loading Secrets Patterns DB: {e}")
+            logger.error(f"Error loading Secrets Patterns DB: {e}")
 
     def _load_gitleaks_patterns(self):
         """Load patterns from Gitleaks TOML"""
         toml_path = Path(__file__).parent.parent.parent / "vendor" / "gitleaks" / "gitleaks.toml"
 
         if not toml_path.exists():
-            print(f"Warning: Gitleaks config not found at {toml_path}")
+            logger.warning(f"Gitleaks config not found at {toml_path}")
             return
 
         try:
@@ -124,8 +148,11 @@ class CredentialPatternEngine:
             initial_count = len(self.patterns)
 
             for rule in rules:
-                # Skip if we already have a similar pattern
+                # Skip if we already have a similar pattern or if it's known to be slow/noisy
                 rule_id = rule.get('id', '')
+                if rule_id == 'generic-api-key':
+                    continue
+                
                 if any(p['id'] == rule_id for p in self.patterns):
                     continue
 
@@ -157,11 +184,11 @@ class CredentialPatternEngine:
                         pass
 
             new_patterns = len(self.patterns) - initial_count
-            print(f"Loaded {new_patterns} additional patterns from Gitleaks (Total: {len(self.patterns)})")
-            print(f"Loaded {len(self.allowlist_patterns)} allowlist patterns from Gitleaks")
+            logger.info(f"Loaded {new_patterns} additional patterns from Gitleaks (Total: {len(self.patterns)})")
+            logger.info(f"Loaded {len(self.allowlist_patterns)} allowlist patterns from Gitleaks")
 
         except Exception as e:
-            print(f"Error loading Gitleaks patterns: {e}")
+            logger.error(f"Error loading Gitleaks patterns: {e}")
 
     def _load_custom_patterns(self):
         """Add custom patterns for dark web specific formats"""
@@ -170,7 +197,7 @@ class CredentialPatternEngine:
             {
                 'id': 'custom-combo-list',
                 'name': 'Combo List Format',
-                'regex': r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\s*[:;,\s]+\s*[^\s]{4,}',
+                'regex': r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\s*[:;,\s]+\s*[^\s]{4,100}',
                 'confidence': 'high',
                 'category': 'credentials',
                 'provider': 'combo_list',
@@ -182,7 +209,7 @@ class CredentialPatternEngine:
             {
                 'id': 'custom-db-dump',
                 'name': 'Database Dump Format',
-                'regex': r'(?:username|user|email)[\s]*[:|=][\s]*([^\s|]+)[\s]*\|[\s]*(?:password|pass|pwd)[\s]*[:|=][\s]*([^\s|]+)',
+                'regex': r'(?:username|user|email)[\s]*[:|=][\s]*([^\s|]{1,100})[\s]*\|[\s]*(?:password|pass|pwd)[\s]*[:|=][\s]*([^\s|]{1,100})',
                 'confidence': 'high',
                 'category': 'credentials',
                 'provider': 'db_dump',
@@ -241,12 +268,12 @@ class CredentialPatternEngine:
             # High-entropy string (from old fallback)
             {
                 'id': 'custom-high-entropy-b64-hex',
-                'name': 'High Entropy String (40+ chars)',
-                'regex': r'\b[A-Za-z0-9_-]{40,}\b',
+                'name': 'High Entropy String (40-2000 chars)',
+                'regex': r'\b[A-Za-z0-9_-]{40,2000}\b',
                 'confidence': 'low',
                 'category': 'api_keys',
                 'provider': 'generic',
-                'description': '40+ char hex or base64-like string',
+                'description': '40-2000 char hex or base64-like string',
                 'tags': ['high_entropy', 'key'],
                 'source': 'custom'
             },
@@ -409,14 +436,14 @@ class CredentialPatternEngine:
         ]
 
         initial_count = len(self.patterns)
-        print(f"LOADING CUSTOM PATTERNS. Current patterns: {initial_count}")
+        logger.info(f"LOADING CUSTOM PATTERNS. Current patterns: {initial_count}")
         for pattern in custom_patterns:
-            print(f"ADDING PATTERN: {pattern['id']}")
+            logger.debug(f"ADDING PATTERN: {pattern['id']}")
             self.patterns.append(pattern)
             self.categories[pattern['category']].append(pattern)
 
         new_patterns = len(self.patterns) - initial_count
-        print(f"Loaded {new_patterns} custom dark web patterns (Total: {len(self.patterns)})")
+        logger.info(f"Loaded {new_patterns} custom dark web patterns (Total: {len(self.patterns)})")
 
     def _compile_patterns(self):
         """Compile all regex patterns for performance"""
@@ -424,15 +451,41 @@ class CredentialPatternEngine:
 
         for pattern in self.patterns:
             try:
+                # Remove global IGNORECASE to prevent catastrophic backtracking.
+                # Many patterns are case-sensitive (e.g. AWS keys).
+                # Patterns that need IGNORECASE should include (?i) in the regex.
                 compiled = {
                     **pattern,
-                    'compiled_regex': re.compile(pattern['regex'], re.IGNORECASE | re.MULTILINE)
+                    'compiled_regex': re.compile(pattern['regex'], re.MULTILINE)
                 }
                 self.compiled_patterns.append(compiled)
             except re.error as e:
-                print(f"Warning: Failed to compile pattern {pattern['id']}: {e}")
+                logger.warning(f"Failed to compile pattern {pattern['id']}: {e}")
 
-        print(f"Compiled {len(self.compiled_patterns)} patterns for scanning")
+        logger.info(f"Compiled {len(self.compiled_patterns)} patterns for scanning")
+        self._compile_mega_keyword_regex()
+
+    def _compile_mega_keyword_regex(self):
+        """Compile a single mega-regex of all unique keywords for ultra-fast pre-filtering"""
+        all_keywords = set()
+        for pattern in self.patterns:
+            if 'keywords' in pattern and pattern['keywords']:
+                for kw in pattern['keywords']:
+                    if len(kw) > 2:
+                        all_keywords.add(re.escape(kw))
+        
+        if all_keywords:
+            # Join all keywords with OR and wrap in a non-capturing group.
+            # We use a word boundary \b to avoid partial matches (e.g. 'aws' in 'laws').
+            pattern_str = r'(?i)\b(?:' + '|'.join(sorted(all_keywords)) + r')\b'
+            try:
+                self.mega_keyword_regex = re.compile(pattern_str)
+                logger.info(f"Compiled mega-keyword regex with {len(all_keywords)} unique keywords")
+            except re.error as e:
+                logger.error(f"Failed to compile mega-keyword regex: {e}")
+                self.mega_keyword_regex = None
+        else:
+            self.mega_keyword_regex = None
 
     def _normalize_category(self, category: str) -> str:
         """Normalize category names"""
@@ -516,27 +569,33 @@ class CredentialPatternEngine:
         confidence_levels = {'low': 0, 'medium': 1, 'high': 2}
         min_level = confidence_levels.get(min_confidence, 0)
 
-        # Select patterns to use
+        # High-speed pre-check: if no keywords are present at all, bail out early.
+        # This is extremely effective for large chunks of garbage text.
+        if self.mega_keyword_regex and not self.mega_keyword_regex.search(text):
+            return []
+
         patterns_to_scan = self.compiled_patterns
         if categories:
             patterns_to_scan = [p for p in self.compiled_patterns if p['category'] in categories]
 
-        for pattern in patterns_to_scan:
-            print(f"SCANNING WITH PATTERN: {pattern['id']}")
+        import time
+        
+        total_patterns = len(patterns_to_scan)
+        for i, pattern in enumerate(patterns_to_scan):
             # Check confidence level
             pattern_level = confidence_levels.get(pattern.get('confidence', 'medium'), 1)
             if pattern_level < min_level:
                 continue
 
-            # Keyword pre-filtering for performance (if keywords are specified)
+            # Keyword pre-filtering for performance
             if 'keywords' in pattern and pattern['keywords']:
                 if not any(kw.lower() in text.lower() for kw in pattern['keywords']):
                     continue
 
+            start_time = time.time()
             try:
                 for match in pattern['compiled_regex'].finditer(text):
                     value = match.group(0)
-                    print(f"MATCH FOUND FOR {pattern['id']}: {value}")
                     start_pos = match.start()
                     end_pos = match.end()
 
@@ -569,9 +628,14 @@ class CredentialPatternEngine:
                     )
 
                     matches.append(credential_match)
+                    logger.debug(f"MATCH FOUND FOR {pattern['id']}: {value}")
+
+                duration = time.time() - start_time
+                if duration > 1.0:
+                    logger.warning(f"Slow pattern detected: {pattern['id']} took {duration:.2f}s")
 
             except Exception as e:
-                print(f"Error scanning with pattern {pattern['id']}: {e}")
+                logger.error(f"Error scanning with pattern {pattern['id']}: {e}")
 
         return matches
 
@@ -584,9 +648,13 @@ class CredentialPatternEngine:
 
     @staticmethod
     def calculate_entropy(data: str) -> float:
-        """Calculate Shannon entropy of a string"""
+        """Calculate Shannon entropy of a string (limited to first 1000 chars for performance)"""
         if not data:
             return 0.0
+
+        # Limit to 1000 chars
+        if len(data) > 1000:
+            data = data[:1000]
 
         # Count character frequencies
         freq = {}

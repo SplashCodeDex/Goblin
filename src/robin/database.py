@@ -1,8 +1,11 @@
 import sqlite3
 import json
 import os
+import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 # Get the directory of the current script
 _current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -108,6 +111,18 @@ def initialize_database():
     );
     """)
 
+    # Migration: Ensure new columns exist
+    cursor.execute("PRAGMA table_info(leaks);")
+    columns = [row[1] for row in cursor.fetchall()]
+    if 'content_hash' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN content_hash TEXT;")
+    if 'relevance_score' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN relevance_score REAL DEFAULT 0.0;")
+    if 'patterns_found' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN patterns_found TEXT;")
+    if 'parent_id' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN parent_id INTEGER;")
+    
     conn.commit()
     conn.close()
 
@@ -176,6 +191,18 @@ def save_scheduled_query(name: str, query_text: str, schedule: str, search_engin
         search_engines=excluded.search_engines;
     """, (name, query_text, schedule, search_engines_json))
 
+    # Migration: Ensure new columns exist
+    cursor.execute("PRAGMA table_info(leaks);")
+    columns = [row[1] for row in cursor.fetchall()]
+    if 'content_hash' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN content_hash TEXT;")
+    if 'relevance_score' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN relevance_score REAL DEFAULT 0.0;")
+    if 'patterns_found' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN patterns_found TEXT;")
+    if 'parent_id' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN parent_id INTEGER;")
+    
     conn.commit()
     conn.close()
 
@@ -197,6 +224,18 @@ def delete_scheduled_query(query_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM scheduled_queries WHERE id = ?", (query_id,))
+    # Migration: Ensure new columns exist
+    cursor.execute("PRAGMA table_info(leaks);")
+    columns = [row[1] for row in cursor.fetchall()]
+    if 'content_hash' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN content_hash TEXT;")
+    if 'relevance_score' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN relevance_score REAL DEFAULT 0.0;")
+    if 'patterns_found' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN patterns_found TEXT;")
+    if 'parent_id' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN parent_id INTEGER;")
+    
     conn.commit()
     conn.close()
 
@@ -205,6 +244,18 @@ def update_scheduled_query_status(query_id: int, is_active: bool):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE scheduled_queries SET is_active = ? WHERE id = ?", (1 if is_active else 0, query_id))
+    # Migration: Ensure new columns exist
+    cursor.execute("PRAGMA table_info(leaks);")
+    columns = [row[1] for row in cursor.fetchall()]
+    if 'content_hash' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN content_hash TEXT;")
+    if 'relevance_score' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN relevance_score REAL DEFAULT 0.0;")
+    if 'patterns_found' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN patterns_found TEXT;")
+    if 'parent_id' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN parent_id INTEGER;")
+    
     conn.commit()
     conn.close()
 
@@ -225,6 +276,18 @@ def update_last_run_timestamp(query_id: int, timestamp: str):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE scheduled_queries SET last_run_timestamp = ? WHERE id = ?", (timestamp, query_id))
+    # Migration: Ensure new columns exist
+    cursor.execute("PRAGMA table_info(leaks);")
+    columns = [row[1] for row in cursor.fetchall()]
+    if 'content_hash' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN content_hash TEXT;")
+    if 'relevance_score' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN relevance_score REAL DEFAULT 0.0;")
+    if 'patterns_found' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN patterns_found TEXT;")
+    if 'parent_id' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN parent_id INTEGER;")
+    
     conn.commit()
     conn.close()
 
@@ -238,6 +301,18 @@ def create_notification(scheduled_query_id: int, run_id: int, message: str):
     INSERT INTO notifications (scheduled_query_id, run_id, message, timestamp, is_read)
     VALUES (?, ?, ?, ?, 0)
     """, (scheduled_query_id, run_id, message, datetime.utcnow().isoformat() + "Z"))
+    # Migration: Ensure new columns exist
+    cursor.execute("PRAGMA table_info(leaks);")
+    columns = [row[1] for row in cursor.fetchall()]
+    if 'content_hash' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN content_hash TEXT;")
+    if 'relevance_score' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN relevance_score REAL DEFAULT 0.0;")
+    if 'patterns_found' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN patterns_found TEXT;")
+    if 'parent_id' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN parent_id INTEGER;")
+    
     conn.commit()
     conn.close()
 
@@ -268,6 +343,18 @@ def mark_notification_as_read(notification_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE notifications SET is_read = 1 WHERE id = ?", (notification_id,))
+    # Migration: Ensure new columns exist
+    cursor.execute("PRAGMA table_info(leaks);")
+    columns = [row[1] for row in cursor.fetchall()]
+    if 'content_hash' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN content_hash TEXT;")
+    if 'relevance_score' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN relevance_score REAL DEFAULT 0.0;")
+    if 'patterns_found' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN patterns_found TEXT;")
+    if 'parent_id' not in columns:
+        cursor.execute("ALTER TABLE leaks ADD COLUMN parent_id INTEGER;")
+    
     conn.commit()
     conn.close()
 

@@ -2,10 +2,24 @@ import logging
 import random
 import time
 import re
+import gzip
+import os
+import psutil
+import json
+import sqlite3
+from datetime import datetime, UTC
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from .scrape import get_tor_session, USER_AGENTS
+from .dedup import ContentHasher
+from .database import get_db_connection, check_for_near_duplicates
+from .blob_store import BlobStore
+from .credential_patterns import scan_text
+from .llm import get_llm, generate_summary
+from .config import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +49,28 @@ class PasteSource(ABC):
         Scrapes the raw content of a specific paste by its ID or relative URL.
         """
         pass
+
+    def scrape_paste_stream(self, paste_id: str, chunk_callback, chunk_size: int = 1024 * 1024) -> bool:
+        """
+        Streams the raw content of a specific paste and calls chunk_callback for each chunk.
+        Default implementation uses _get_request_stream.
+        """
+        url = f"{self.base_url}/raw/{paste_id}"
+        if self.name == "Pastebin": # Special case for Pastebin raw URL
+             url = f"{self.base_url}/raw/{paste_id}"
+        
+        resp = self._get_request_stream(url)
+        if not resp or resp.status_code != 200:
+            return False
+            
+        try:
+            for chunk in resp.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    chunk_callback(chunk.decode('utf-8', errors='ignore'))
+            return True
+        except Exception as e:
+            logger.error(f"Streaming failed for {paste_id}: {e}")
+            return False
 
     def search(self, query: str) -> List[Dict[str, Any]]:
         """
@@ -487,45 +523,101 @@ class Watcher:
 
         logger.info(f"New paste discovered on {source_name}: {paste_meta['id']}")
         
-        # 1. Fetch content (Adaptive for browser/requests)
-        # For 'Big Data' track, we optimize memory by using streaming when possible.
-        content = source.scrape_paste(paste_meta['id'])
-        if not content:
+        process = psutil.Process(os.getpid())
+        
+        full_content = ""
+        storage_content = ""
+        c_hash = None
+        
+        # Temporary buffer for chunked processing
+        total_size = 0
+        is_large = False
+        blob_writer = None
+        temp_blob_path = None
+
+        def chunk_handler(chunk_text):
+            nonlocal full_content, total_size, is_large, blob_writer, temp_blob_path
+            total_size += len(chunk_text)
+            
+            # Memory Monitor: If RSS > 150MB, force immediate blob storage
+            mem_usage = process.memory_info().rss / (1024 * 1024)
+            if mem_usage > 150:
+                logger.warning(f"High memory usage detected ({mem_usage:.2f}MB). Forcing stream to blob.")
+                is_large = True
+
+            if total_size > 50 * 1024: # 50KB threshold
+                is_large = True
+
+            if is_large:
+                if not blob_writer:
+                    logger.info(f"Streaming large paste {paste_meta['id']} to blob storage.")
+                    temp_blob_path = BlobStore.save_blob(paste_meta['id'], source_name, "")
+                    blob_writer = gzip.open(temp_blob_path, 'at', encoding='utf-8')
+                    if full_content:
+                        blob_writer.write(full_content)
+                        full_content = ""
+                
+                blob_writer.write(chunk_text)
+            else:
+                full_content += chunk_text
+
+        # Start streaming
+        success = source.scrape_paste_stream(paste_meta['id'], chunk_handler)
+        
+        if blob_writer:
+            blob_writer.close()
+
+        if not success and total_size == 0:
+            logger.error(f"Failed to fetch content for {paste_meta['id']}")
             return
+
+        final_content = full_content if not is_large else temp_blob_path
+        storage_content = final_content
 
         # 2. Deduplication (SimHash)
-        from .dedup import ContentHasher
-        from .database import get_db_connection, check_for_near_duplicates
+        hash_input = full_content if not is_large else ""
+        if is_large:
+            with gzip.open(temp_blob_path, 'rt', encoding='utf-8') as f:
+                hash_input = f.read(100 * 1024)
         
-        c_hash = ContentHasher.calculate_hash(content)
+        c_hash = ContentHasher.calculate_hash(hash_input)
         duplicate = check_for_near_duplicates(c_hash) if c_hash else None
         
+        timestamp_now = datetime.now(UTC).isoformat() + "Z"
+
         if duplicate:
-            logger.info(f"Paste {paste_meta['id']} is a near-duplicate of leak ID {duplicate['id']} ({duplicate['source_name']})")
-            # We skip storage of duplicate content but could log the occurrence.
+            logger.info(f"Paste {paste_meta['id']} is a near-duplicate of leak ID {duplicate['id']}")
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                INSERT OR IGNORE INTO leaks (
+                    source_type, source_name, external_id, url, title, 
+                    content, content_hash, parent_id, timestamp
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    'paste', source_name, paste_meta['id'], paste_meta['url'], paste_meta['title'],
+                    f"LINKED_TO:{duplicate['id']}", c_hash, duplicate['id'], timestamp_now
+                ))
+                conn.commit()
+                conn.close()
+                logger.info(f"Successfully created linked reference for duplicate {paste_meta['id']}.")
+            except Exception as e:
+                logger.error(f"Failed to create linked reference: {e}")
+
+            if is_large and temp_blob_path and os.path.exists(temp_blob_path):
+                os.remove(temp_blob_path)
             return
 
-        # 3. Big Data Check (Threshold: 5MB)
-        from .blob_store import BlobStore
-        storage_content = content
-        is_blob = False
-        
-        if len(content) > 5 * 1024 * 1024:
-            logger.info(f"Large paste detected ({len(content)} chars). Storing as blob.")
-            blob_path = BlobStore.save_blob(paste_meta['id'], source_name, content)
-            if blob_path:
-                storage_content = blob_path # Store path in DB
-                is_blob = True
-
         # 4. AI Analysis Pipeline
-        analysis = self._analyze_leak(content, paste_meta['title'])
+        analysis_input = full_content if not is_large else temp_blob_path
+        analysis = self._analyze_leak(analysis_input, paste_meta['title'])
         
-        from datetime import datetime
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            # Insert into leaks table
             cursor.execute("""
             INSERT OR IGNORE INTO leaks (
                 source_type, source_name, external_id, url, title, 
@@ -533,17 +625,9 @@ class Watcher:
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                'paste',
-                source_name,
-                paste_meta['id'],
-                paste_meta['url'],
-                paste_meta['title'],
-                storage_content,
-                c_hash,
-                analysis.get("summary"),
-                analysis.get("relevance_score", 0.0),
-                analysis.get("patterns_json"),
-                datetime.utcnow().isoformat() + "Z"
+                'paste', source_name, paste_meta['id'], paste_meta['url'], paste_meta['title'],
+                storage_content, c_hash, analysis.get("summary"), analysis.get("relevance_score", 0.0),
+                analysis.get("patterns_json"), timestamp_now
             ))
             
             leak_id = cursor.lastrowid
@@ -552,33 +636,34 @@ class Watcher:
                 cursor.execute("""
                 INSERT INTO paste_metadata (leak_id, author, syntax, scrape_timestamp)
                 VALUES (?, ?, ?, ?)
-                """, (
-                    leak_id,
-                    meta.get("author"),
-                    meta.get("syntax"),
-                    datetime.utcnow().isoformat() + "Z"
-                ))
+                """, (leak_id, meta.get("author"), meta.get("syntax"), timestamp_now))
             
             conn.commit()
             conn.close()
             logger.info(f"Successfully saved and analyzed paste {paste_meta['id']}.")
         except Exception as e:
             logger.error(f"Failed to save paste {paste_meta['id']}: {e}")
+            if is_large and temp_blob_path and os.path.exists(temp_blob_path):
+                os.remove(temp_blob_path)
 
     def _analyze_leak(self, content: str, title: str) -> Dict[str, Any]:
         """
         Runs the content through pattern matching and LLM summarization.
         Supports parallel chunk scanning for large files.
         """
-        import json
-        from .credential_patterns import scan_text
-        from .llm import get_llm, generate_summary
-        from .config import DEFAULT_MODEL
-
         matches = []
-        # If content > 5MB, use parallel chunk scanning
-        if len(content) > 5 * 1024 * 1024:
-            logger.info("Using ParallelChunkScanner for large content.")
+        # Check if content is a path (ends with .gz) or raw text
+        is_blob = isinstance(content, str) and content.startswith("data/blobs/")
+        
+        if is_blob:
+            logger.info("Using ParallelChunkScanner for large content (blob).")
+            # For now, we load blob to scan, but ParallelChunkScanner could be optimized to read handle
+            with gzip.open(content, 'rt', encoding='utf-8') as f:
+                text = f.read()
+            scanner = ParallelChunkScanner()
+            matches = scanner.scan(text)
+        elif len(content) > 5 * 1024 * 1024:
+            logger.info("Using ParallelChunkScanner for large content (memory).")
             scanner = ParallelChunkScanner()
             matches = scanner.scan(content)
         else:
@@ -594,20 +679,25 @@ class Watcher:
                 "confidence": m.confidence,
                 "value": m.value[:10] + "..." # Redact for metadata
             })
-            # Simple scoring: high=1.0, medium=0.5, low=0.2
             weight = {"high": 1.0, "medium": 0.5, "low": 0.2}.get(m.confidence, 0.1)
             total_confidence += weight
 
-        # Normalize relevance score (capped at 5.0)
         relevance_score = min(5.0, total_confidence)
 
-        # 2. LLM Summarization (Only if relevance score > 0 or interesting title)
         summary = None
         if relevance_score > 0.5 or any(k in title.lower() for k in ["leak", "db", "combo", "pass"]):
             try:
                 llm = get_llm(DEFAULT_MODEL)
-                # For large files, only send the first and last chunks to LLM
-                if len(content) > 10000:
+                if is_blob:
+                    with gzip.open(content, 'rt', encoding='utf-8') as f:
+                        # Read first 5KB and last 5KB
+                        first_part = f.read(5000)
+                        f.seek(0, os.SEEK_END)
+                        size = f.tell()
+                        f.seek(max(0, size - 5000))
+                        last_part = f.read(5000)
+                        context_text = first_part + "\n... [TRUNCATED] ...\n" + last_part
+                elif len(content) > 10000:
                     context_text = content[:5000] + "\n... [TRUNCATED] ...\n" + content[-5000:]
                 else:
                     context_text = content
@@ -632,9 +722,6 @@ class ParallelChunkScanner:
         self.overlap = overlap
 
     def scan(self, text: str) -> List[Any]:
-        from .credential_patterns import scan_text
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        
         chunks = []
         start = 0
         n = len(text)
@@ -643,7 +730,7 @@ class ParallelChunkScanner:
             chunks.append(text[start:end])
             if end == n:
                 break
-            start = end - self.overlap # Overlap to catch patterns split across chunks
+            start = end - self.overlap
             
         all_matches = []
         seen_values = set()

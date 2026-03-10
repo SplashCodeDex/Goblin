@@ -519,9 +519,11 @@ async def api_extract(req: ExtractReq) -> Dict[str, Any]:
     # Use enhanced extraction if available
     if CREDENTIAL_ENGINES_AVAILABLE:
         try:
+            loop = asyncio.get_running_loop()
             for url, content in req.scraped.items():
                 # Use credential pattern engine for comprehensive detection
-                matches = credential_patterns.scan_text(content)
+                # Offload CPU-bound scanning to thread pool
+                matches = await loop.run_in_executor(None, credential_patterns.scan_text, content)
 
                 for match in matches:
                     artifacts.append({
@@ -536,7 +538,7 @@ async def api_extract(req: ExtractReq) -> Dict[str, Any]:
                     })
 
                 # Also use TruffleHog for verification
-                trufflehog_findings = trufflehog_engine.scan_text(content)
+                trufflehog_findings = await loop.run_in_executor(None, trufflehog_engine.scan_text, content)
                 for finding in trufflehog_findings:
                     artifacts.append({
                         "type": finding.detector_type,
@@ -863,20 +865,7 @@ async def autopilot_stream():
             }
 
     return EventSourceResponse(event_generator())
-            "ml_filter": ml_stats,
-            "leaklooker": leaklooker_stats,
-            "github_dorking": dorking_stats,
-            "features_enabled": {
-                "live_verification": ENABLE_LIVE_VERIFICATION,
-                "breach_lookup": ENABLE_BREACH_LOOKUP,
-                "db_discovery": ENABLE_DB_DISCOVERY,
-                "github_dorking": ENABLE_GITHUB_DORKING
-            }
-        }
 
-    except Exception as e:
-        logger.error(f"Error getting credential stats: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ========== GITHUB DORKING ENDPOINTS ==========
