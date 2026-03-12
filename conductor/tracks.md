@@ -8,8 +8,3 @@
 - [ ] **Track: Documentation Updates**
   Link: [./tracks/docs_updates_20250309/](./tracks/docs_updates_20250309/)
 
----
-
-- [x] **Track: AutoPilot Enhancements (20250310)**
-*Link: [./tracks/autopilot_enhancements_20250310/](./tracks/autopilot_enhancements_20250310/)*
-
