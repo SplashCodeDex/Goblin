@@ -5,7 +5,7 @@
 - **FastAPI:** High-performance REST API for backend-frontend communication.
 - **Next.js (Frontend):** React-based framework for the dashboard and search interface.
 - **Tailwind CSS & Shadcn/UI:** Responsive and modern UI/UX design.
-- **SQLite:** Local database (robin.db) for storing search history and discovered leaks.
+- **SQLite:** Local database (robin.db) for storing search history, discovered leaks, and persistent AutoPilot engine state.
 - **Streaming Storage:** Compressed (.gz) blob management system for handling large leak contents with low memory overhead.
 
 ## OSINT & Intelligence
@@ -17,7 +17,7 @@
 - **Stealth Optimization:** Canvas fingerprint randomization and dynamic User-Agent rotation.
 - **Hybrid Ingestion Engine:** Background 'Watcher' mode for persistent monitoring of hot leaks.
 - **OCR & Document Extraction:** Pytesseract (for images) and pdfplumber (for PDFs).
-- **ML & AI Integration:** Support for OpenAI, Anthropic, and local Ollama models for analyzing data.
+- **ML & AI Integration:** Support for OpenAI, Anthropic, and local Ollama models for analyzing data. Integrated **Credential Digger** as a Docker microservice for high-fidelity false positive reduction.
 - **Fuzzy Deduplication:** SimHash implementation for detecting near-duplicate leaks and preventing redundant storage/analysis.
 
 ## Identity & API Management
