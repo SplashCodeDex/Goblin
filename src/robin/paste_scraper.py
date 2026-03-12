@@ -398,41 +398,78 @@ class TelegramHandler(PasteSource):
     Handler for Telegram Log Channels.
     Requires API_ID and API_HASH.
     """
-    def __init__(self):
+    def __init__(self, session_name: str = 'robin_telegram'):
         super().__init__("TelegramLogs", "https://t.me")
-        from .config import TELEGRAM_API_ID, TELEGRAM_API_HASH
+        from .config import TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_PHONE
         self.api_id = TELEGRAM_API_ID
         self.api_hash = TELEGRAM_API_HASH
+        self.phone = TELEGRAM_PHONE
+        self.session_name = session_name
         self.client = None
+        self._callback = None
 
     def get_recent(self) -> List[Dict[str, Any]]:
-        # In a real implementation, this would use telethon to listen to channels.
-        # For now, we provide a placeholder that could be expanded.
+        # Telegram monitoring is event-driven via Telethon, 
+        # so we don't use the polling get_recent.
         return []
 
     def scrape_paste(self, paste_id: str) -> Optional[str]:
-        # Implementation would fetch specific message content.
         return None
 
-    async def monitor_channels(self, channel_ids: List[str]):
+    async def start_monitoring(self, channel_ids: List[str], callback):
         """
         Asynchronous monitoring of specific channels.
+        :param callback: Function to call when a new message is received. 
+                         Signature: callback(source_name, paste_meta)
         """
         if not self.api_id or not self.api_hash:
             logger.warning("Telegram API credentials missing. Skipping monitor.")
             return
 
         from telethon import TelegramClient, events
-        self.client = TelegramClient('robin_session', self.api_id, self.api_hash)
+        
+        # Use a persistent session file in .cache
+        session_path = os.path.join(".cache", self.session_name)
+        os.makedirs(".cache", exist_ok=True)
+        
+        self.client = TelegramClient(session_path, self.api_id, self.api_hash)
+        self._callback = callback
         
         @self.client.on(events.NewMessage(chats=channel_ids))
         async def handler(event):
-            # Process new log message
-            logger.info(f"New Telegram log from {event.chat_id}")
-            # Logic to save to database would go here
-            
-        await self.client.start()
+            try:
+                # Extract content and create metadata
+                content = event.message.text
+                if not content: return
+                
+                chat = await event.get_chat()
+                chat_title = getattr(chat, 'title', str(event.chat_id))
+                
+                paste_meta = {
+                    "id": str(event.id),
+                    "url": f"https://t.me/c/{event.chat_id}/{event.id}",
+                    "title": f"Msg from {chat_title}",
+                    "content": content,
+                    "meta": {
+                        "author": str(event.sender_id),
+                        "chat_id": str(event.chat_id)
+                    }
+                }
+                
+                logger.info(f"New Telegram message from {chat_title} (ID: {event.id})")
+                if self._callback:
+                    # Telegram messages are handled as 'findings' directly if content is included
+                    self._callback(self.name, paste_meta)
+            except Exception as e:
+                logger.error(f"Error handling Telegram message: {e}")
+
+        logger.info(f"Starting Telegram monitor for {len(channel_ids)} channels...")
+        await self.client.start(phone=self.phone)
         await self.client.run_until_disconnected()
+
+    def stop(self):
+        if self.client:
+            self.client.disconnect()
 
 class PasteScraper:
     """
@@ -482,7 +519,15 @@ class Watcher:
         self.scraper = scraper
         self.poll_interval = poll_interval
         self.running = False
-        self._seen_ids = set() # Simple in-memory deduplication (resets on restart)
+
+        # Load seen IDs from database
+        from .database import load_autopilot_state
+        saved_ids = load_autopilot_state("watcher_seen_ids")
+        try:
+            self._seen_ids = set(json.loads(saved_ids)) if saved_ids else set()
+        except Exception as e:
+            logger.warning(f"Failed to load watcher_seen_ids: {e}")
+            self._seen_ids = set()
 
     def start(self):
         """
@@ -490,21 +535,29 @@ class Watcher:
         """
         self.running = True
         logger.info(f"Watcher started. Polling interval: {self.poll_interval}s")
-        
+
+        from .database import save_autopilot_state
+
         try:
             while self.running:
                 all_recent = self.scraper.monitor_all_recent()
+                new_found = False
                 for source_name, pastes in all_recent.items():
                     for paste in pastes:
                         p_id = f"{source_name}:{paste['id']}"
                         if p_id not in self._seen_ids:
                             self._seen_ids.add(p_id)
                             self._process_new_paste(source_name, paste)
-                
+                            new_found = True
+
+                if new_found:
+                    # Persist seen IDs (keep last 5000 to avoid DB bloat)
+                    ids_list = list(self._seen_ids)[-5000:]
+                    save_autopilot_state("watcher_seen_ids", json.dumps(ids_list))
+
                 time.sleep(self.poll_interval)
         except KeyboardInterrupt:
             self.stop()
-
     def stop(self):
         """
         Stops the monitoring loop.

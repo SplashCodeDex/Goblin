@@ -67,6 +67,9 @@ SCYLLA_API_KEY = os.getenv("SCYLLA_API_KEY", None)
 # Database Discovery API Keys
 BINARYEDGE_API_KEY = os.getenv("BINARYEDGE_API_KEY", None)
 
+# Credential Digger API
+CRED_DIGGER_API_URL = os.getenv("CRED_DIGGER_API_URL", "http://credential-digger:5000")
+
 # Telegram API Configuration
 TELEGRAM_API_ID = os.getenv("TELEGRAM_API_ID", None)
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", None)

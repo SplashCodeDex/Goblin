@@ -2,8 +2,8 @@ import sqlite3
 import json
 import os
 import logging
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from typing import Dict, Any, List, Optional, Set
+from datetime import datetime, UTC
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +108,23 @@ def initialize_database():
         is_read INTEGER DEFAULT 0,
         FOREIGN KEY (scheduled_query_id) REFERENCES scheduled_queries (id),
         FOREIGN KEY (run_id) REFERENCES runs (id)
+    );
+    """)
+
+    # Create 'autopilot_state' table for persistence
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS autopilot_state (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TEXT NOT NULL
+    );
+    """)
+
+    # Create 'scanned_hashes' table for content deduplication
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS scanned_hashes (
+        content_hash TEXT PRIMARY KEY,
+        timestamp TEXT NOT NULL
     );
     """)
 
@@ -300,7 +317,7 @@ def create_notification(scheduled_query_id: int, run_id: int, message: str):
     cursor.execute("""
     INSERT INTO notifications (scheduled_query_id, run_id, message, timestamp, is_read)
     VALUES (?, ?, ?, ?, 0)
-    """, (scheduled_query_id, run_id, message, datetime.utcnow().isoformat() + "Z"))
+    """, (scheduled_query_id, run_id, message, datetime.now(UTC).isoformat()))
     # Migration: Ensure new columns exist
     cursor.execute("PRAGMA table_info(leaks);")
     columns = [row[1] for row in cursor.fetchall()]
@@ -391,6 +408,51 @@ def check_for_near_duplicates(content_hash: str, threshold: float = 0.9) -> Opti
             return dict(row)
             
     return None
+
+# --- AutoPilot State Management ---
+
+def save_autopilot_state(key: str, value: str):
+    """Saves or updates a piece of autopilot state."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO autopilot_state (key, value, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET
+        value=excluded.value,
+        updated_at=excluded.updated_at
+    """, (key, value, datetime.now(UTC).isoformat()))
+    conn.commit()
+    conn.close()
+
+def load_autopilot_state(key: str) -> Optional[str]:
+    """Loads a piece of autopilot state by key."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT value FROM autopilot_state WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+def save_scanned_hash(content_hash: str):
+    """Persists a scanned content hash to prevent redundant processing."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT OR IGNORE INTO scanned_hashes (content_hash, timestamp)
+    VALUES (?, ?)
+    """, (content_hash, datetime.now(UTC).isoformat()))
+    conn.commit()
+    conn.close()
+
+def load_scanned_hashes(limit: int = 1000) -> Set[str]:
+    """Loads the most recent scanned hashes from the database."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT content_hash FROM scanned_hashes ORDER BY timestamp DESC LIMIT ?", (limit,))
+    hashes = {row[0] for row in cursor.fetchall()}
+    conn.close()
+    return hashes
 
 if __name__ == "__main__":
     print("Initializing Robin database...")

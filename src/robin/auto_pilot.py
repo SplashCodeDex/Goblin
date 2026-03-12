@@ -16,6 +16,10 @@ from robin.leaklooker_engine import scan_databases
 from robin.cicd_hunter import sweep_all_susceptible_repos
 from robin.paste_scraper import Watcher as PasteWatcher
 from robin.github_search import search_github
+from robin.database import (
+    load_scanned_hashes, save_scanned_hash, 
+    load_autopilot_state, save_autopilot_state
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +33,10 @@ class AutoPilotScout:
         self.trufflehog = get_trufflehog(enable_verification=True)
         self.ml_filter = get_ml_filter()
         self.is_running = False
-        self._last_gist_id = None
-        self._dork_index = 0
+        self._last_gist_id = load_autopilot_state("last_gist_id")
+        self._dork_index = int(load_autopilot_state("dork_index") or 0)
         self._all_dorks = self._flatten_dorks()
-        self._scanned_hashes: Set[str] = set()
+        self._scanned_hashes: Set[str] = load_scanned_hashes(limit=2000)
         self._expanded_accounts: Set[str] = set()
         self.findings_queue = asyncio.Queue()
 
@@ -94,8 +98,30 @@ class AutoPilotScout:
     async def get_paste_stream(self):
         """Monitors Pastebin and Telegram channels."""
         from robin.paste_scraper import PasteScraper, PastebinHandler, TelegramHandler
-        scraper = PasteScraper([PastebinHandler(), TelegramHandler()])
+        
+        # 1. Standard Polling Watcher (Pastebin, etc.)
+        scraper = PasteScraper([PastebinHandler()])
         watcher = PasteWatcher(scraper)
+        
+        # 2. Real-time Telegram Monitor
+        tg_handler = TelegramHandler()
+        
+        # We'll monitor some common aggregator channels (IDs or @names)
+        # Note: In a real scenario, these would come from a config or database
+        target_channels = ["@bot_logs", "@credential_leaks_test"] 
+        
+        # Start TG monitor in background
+        def tg_callback(source_name, paste_meta):
+            # Inject TG message into findings queue
+            asyncio.create_task(self.findings_queue.put({
+                "type": "paste_event",
+                "data": paste_meta,
+                "label": f"Telegram: {source_name}",
+                "timestamp": datetime.now(UTC).isoformat()
+            }))
+
+        # Run TG monitor as a separate task
+        asyncio.create_task(tg_handler.start_monitoring(target_channels, tg_callback))
         
         while self.is_running:
             try:
@@ -107,7 +133,7 @@ class AutoPilotScout:
                             "type": "paste_event",
                             "data": p,
                             "label": f"Paste: {source_name}",
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": datetime.now(UTC).isoformat()
                         })
                 await asyncio.sleep(300)
             except Exception as e:
@@ -120,8 +146,14 @@ class AutoPilotScout:
         content_hash = hashlib.md5(content.encode()).hexdigest()
         if content_hash in self._scanned_hashes:
             return []
+        
         self._scanned_hashes.add(content_hash)
-        if len(self._scanned_hashes) > 1000: self._scanned_hashes.clear()
+        await asyncio.to_thread(save_scanned_hash, content_hash)
+        
+        if len(self._scanned_hashes) > 2000: 
+            # Keep in-memory cache lean, database has the full list
+            self._scanned_hashes.clear()
+            self._scanned_hashes = await asyncio.to_thread(load_scanned_hashes, limit=1000)
 
         # 1. Noise-Gate & ML Filtering
         if not self.ml_filter.is_sensitive(content):
@@ -194,7 +226,7 @@ class AutoPilotScout:
         """Orchestrated Main Loop running multiple high-power hunters."""
         self.is_running = True
 
-        # Start all producers
+        # Start all producers and keep references to tasks
         producers = [
             self.get_gist_stream_wrapped(),
             self.get_paste_stream(),
@@ -203,8 +235,7 @@ class AutoPilotScout:
             self.run_dork_cycle_wrapped()
         ]
 
-        for p in producers:
-            asyncio.create_task(p)
+        self._producer_tasks = [asyncio.create_task(p) for p in producers]
 
         while self.is_running:
             event = await self.findings_queue.get()
@@ -261,6 +292,9 @@ class AutoPilotScout:
                         if gists: self._last_gist_id = gists[0].get("id")
                     for gist in new_gists:
                         yield {"type": "gist_event", "data": gist, "timestamp": datetime.utcnow().isoformat()}
+                    
+                    if new_gists and self._last_gist_id:
+                        await asyncio.to_thread(save_autopilot_state, "last_gist_id", self._last_gist_id)
                 await asyncio.sleep(60)
             except Exception as e:
                 logger.error(f"Gist-Watcher error: {e}")
@@ -273,6 +307,8 @@ class AutoPilotScout:
                 dork = self._all_dorks[self._dork_index % len(self._all_dorks)]
                 self._dork_index += 1
                 logger.info(f"Auto-Pilot Deep-Diver: Running dork '{dork}'")
+                await asyncio.to_thread(save_autopilot_state, "dork_index", str(self._dork_index))
+                
                 from robin.github_dorking import search_single_dork
                 hits = await asyncio.to_thread(search_single_dork, dork, 5)
                 for hit in hits:

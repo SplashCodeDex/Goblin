@@ -6,9 +6,12 @@ Uses machine learning to reduce false positives in credential detection
 import os
 import re
 import logging
+import requests
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from pathlib import Path
+
+from .config import CRED_DIGGER_API_URL
 
 # Credential Digger imports (with fallback if not installed)
 try:
@@ -41,6 +44,7 @@ class MLFilterEngine:
         self.path_model = None
         self.snippet_model = None
         self.initialized = False
+        self.api_url = CRED_DIGGER_API_URL
 
         # Fallback rule-based filters
         self.common_false_positives = self._load_false_positive_patterns()
@@ -94,22 +98,31 @@ class MLFilterEngine:
                 if pattern_dict.get('is_fp', True):
                     return False
 
-        # 2. ML-based filter (Credential Digger)
+        # 2. Try Microservice API (High Fidelity)
+        try:
+            sample = "\n".join(content.splitlines()[:50])
+            resp = requests.post(
+                f"{self.api_url}/model/snippet", 
+                json={"snippets": [sample]},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                predictions = resp.json()
+                if predictions and predictions[0] == 0:
+                    return False
+                return True
+        except Exception as e:
+            logger.debug(f"Microservice prediction failed: {e}")
+
+        # 3. Local ML-based filter (Fallback)
         if self.initialized and self.snippet_model:
             try:
-                # Credential Digger's SnippetModel expects a list of snippets
-                # and returns a list of predictions (0 for FP, 1 for TP)
-                # We'll take a few lines from the content as a sample
-                sample_lines = content.splitlines()[:50]
-                sample = "\n".join(sample_lines)
-                
-                # Note: The exact API for SnippetModel might vary depending on version
-                # Usually it's model.predict([snippet])
+                sample = "\n".join(content.splitlines()[:50])
                 prediction = self.snippet_model.predict([sample])
                 if prediction and prediction[0] == 0:
                     return False
             except Exception as e:
-                logger.debug(f"ML prediction failed: {e}")
+                logger.debug(f"Local ML prediction failed: {e}")
 
         # Default to True if no strong evidence of FP
         return True
@@ -262,7 +275,23 @@ class MLFilterEngine:
         )
 
     def _predict_with_snippet_model(self, value: str, pattern_name: str) -> float:
-        """Predict using snippet model (actual implementation)"""
+        """Predict using snippet model (Microservice or Local)"""
+        # 1. Try Microservice
+        try:
+            resp = requests.post(
+                f"{self.api_url}/model/snippet", 
+                json={"snippets": [value]},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                predictions = resp.json()
+                if predictions:
+                    # Map 0 (FP) to 0.1, 1 (TP) to 0.9 for score
+                    return 0.9 if predictions[0] == 1 else 0.1
+        except Exception:
+            pass
+
+        # 2. Try Local
         if self.snippet_model:
             try:
                 # CredentialDigger predict usually returns 1 (real) or 0 (false positive)
